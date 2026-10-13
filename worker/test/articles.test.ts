@@ -1,0 +1,89 @@
+import { env } from "cloudflare:test";
+import { beforeEach, describe, expect, it } from "vitest";
+import { apiFetch } from "./helpers";
+
+async function seed(): Promise<{ feedId: number; ids: number[] }> {
+  const feed = await env.DB.prepare("INSERT INTO feeds (url, title) VALUES ('https://f.example.com/rss', '测试源')").run();
+  const feedId = Number(feed.meta.last_row_id);
+  const ids: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const r = await env.DB.prepare(
+      "INSERT INTO articles (feed_id, guid, title, url, published_at, excerpt, content) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+      .bind(feedId, `g${i}`, `文章 ${i}`, `https://f.example.com/${i}`, `2025-10-1${i}T08:00:00.000Z`, `摘要 ${i}`, `<p>正文 ${i}</p>`)
+      .run();
+    ids.push(Number(r.meta.last_row_id));
+  }
+  return { feedId, ids };
+}
+
+beforeEach(async () => {
+  await env.DB.exec("DELETE FROM article_states; DELETE FROM articles; DELETE FROM feeds; DELETE FROM categories; DELETE FROM settings;");
+});
+
+describe("articles API", () => {
+  it("分页游标:每页 2 条,顺序倒序且不重复", async () => {
+    await seed();
+    const p1 = (await (await apiFetch("/api/articles?limit=2")).json()) as { items: { id: number }[]; nextCursor: string | null };
+    expect(p1.items).toHaveLength(2);
+    expect(p1.items[0]!.id).toBeGreaterThan(p1.items[1]!.id);
+    expect(p1.nextCursor).toBeTruthy();
+    const p2 = (await (await apiFetch(`/api/articles?limit=2&cursor=${encodeURIComponent(p1.nextCursor!)}`)).json()) as { items: { id: number }[]; nextCursor: string | null };
+    expect(p2.items).toHaveLength(2);
+    expect(p2.items[0]!.id).toBeLessThan(p1.items[1]!.id);
+    const p3 = (await (await apiFetch(`/api/articles?limit=2&cursor=${encodeURIComponent(p2.nextCursor!)}`)).json()) as { items: { id: number }[]; nextCursor: string | null };
+    expect(p3.items).toHaveLength(1);
+    expect(p3.nextCursor).toBeNull();
+  });
+
+  it("view=unread 过滤与 PATCH 状态切换", async () => {
+    const { ids } = await seed();
+    const before = (await (await apiFetch("/api/articles?view=unread")).json()) as { items: unknown[] };
+    expect(before.items).toHaveLength(5);
+    const patch = await apiFetch(`/api/articles/${ids[0]}`, { method: "PATCH", body: { is_read: true, is_starred: true } });
+    const state = (await patch.json()) as { isRead: boolean; isStarred: boolean; isLater: boolean };
+    expect(state).toEqual({ isRead: true, isStarred: true, isLater: false });
+    const after = (await (await apiFetch("/api/articles?view=unread")).json()) as { items: unknown[] };
+    expect(after.items).toHaveLength(4);
+    const starred = (await (await apiFetch("/api/articles?view=starred")).json()) as { items: unknown[] };
+    expect(starred.items).toHaveLength(1);
+    // 部分更新不覆盖其他字段
+    await apiFetch(`/api/articles/${ids[0]}`, { method: "PATCH", body: { is_later: true } });
+    const detail = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { isStarred: boolean; isLater: boolean };
+    expect(detail.isStarred).toBe(true);
+    expect(detail.isLater).toBe(true);
+  });
+
+  it("标全部已读(按源),保留已有收藏", async () => {
+    const { feedId, ids } = await seed();
+    await apiFetch(`/api/articles/${ids[0]}`, { method: "PATCH", body: { is_starred: true } });
+    const r = await apiFetch("/api/articles/mark-all-read", { method: "POST", body: { scope: { type: "feed", id: feedId } } });
+    expect(((await r.json()) as { updated: number }).updated).toBe(5);
+    const detail = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { isRead: boolean; isStarred: boolean };
+    expect(detail.isRead).toBe(true);
+    expect(detail.isStarred).toBe(true);
+  });
+
+  it("全文持久化与详情读取", async () => {
+    const { ids } = await seed();
+    await apiFetch(`/api/articles/${ids[0]}/fulltext`, { method: "POST", body: { content_full: "<p>提取的全文</p>" } });
+    const detail = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { contentFull: string | null; hasFullText: boolean; extractedAt: string | null };
+    expect(detail.contentFull).toBe("<p>提取的全文</p>");
+    expect(detail.hasFullText).toBe(true);
+    expect(detail.extractedAt).toBeTruthy();
+  });
+
+  it("镜像接口翻页且不含 ai 字段", async () => {
+    await seed();
+    const page = (await (await apiFetch("/api/articles/mirror?limit=3")).json()) as { items: { id: number }[]; nextCursorId: number | null };
+    expect(page.items).toHaveLength(3);
+    expect(page.nextCursorId).toBeTruthy();
+    const next = (await (await apiFetch(`/api/articles/mirror?limit=3&cursor_id=${page.nextCursorId}`)).json()) as { items: { id: number }[] };
+    expect(next.items).toHaveLength(2);
+  });
+
+  it("不存在的文章 404", async () => {
+    expect((await apiFetch("/api/articles/999")).status).toBe(404);
+    expect((await apiFetch("/api/articles/999", { method: "PATCH", body: { is_read: true } })).status).toBe(404);
+  });
+});

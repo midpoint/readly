@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import type { Env } from "./env";
 import { authMiddleware } from "./auth";
 import { fail } from "./respond";
+import articles from "./routes/articles";
 import auth from "./routes/auth";
 import categories from "./routes/categories";
 import feeds from "./routes/feeds";
@@ -16,6 +17,7 @@ app.route("/api", health);
 app.route("/api", auth);
 app.route("/api", categories);
 app.route("/api", feeds);
+app.route("/api", articles);
 
 app.notFound((c) => fail(c, 404, "not_found", "接口不存在"));
 app.onError((err, c) => {
