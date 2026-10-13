@@ -81,4 +81,38 @@ describe("feeds API", () => {
     const res = await apiFetch("/api/feeds", { method: "POST", body: { urls: Array.from({ length: 101 }, (_, i) => `https://f${i}.example.com/rss`) } });
     expect(res.status).toBe(400);
   });
+
+  it("PATCH 分类不存在报 400,不改动原值", async () => {
+    mockFeed("https://feed.example.com");
+    const created = (await (await apiFetch("/api/feeds", { method: "POST", body: { urls: ["https://feed.example.com/rss"] } })).json()) as { created: { id: number }[] };
+    const id = created.created[0]!.id;
+    const res = await apiFetch(`/api/feeds/${id}`, { method: "PATCH", body: { categoryId: 999 } });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("invalid_category");
+    const row = await env.DB.prepare("SELECT category_id FROM feeds WHERE id = ?").bind(id).first<{ category_id: number | null }>();
+    expect(row!.category_id).toBeNull();
+  });
+
+  it("全空 URL 报 400", async () => {
+    const res = await apiFetch("/api/feeds", { method: "POST", body: { url: "   " } });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("invalid_urls");
+  });
+
+  it("分类不存在:整批 400,不产生任何源、不发出抓取", async () => {
+    mockFeed("https://ok.example.com");
+    const res = await apiFetch("/api/feeds", {
+      method: "POST",
+      body: { urls: ["https://ok.example.com/rss"], categoryId: 999 },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("invalid_category");
+    const feeds = (await (await apiFetch("/api/feeds")).json()) as unknown[];
+    expect(feeds).toHaveLength(0);
+    // 注册的 mock 未被应用消费 —— 证明整批在抓取前就被拒绝
+    expect(fetchMock.pendingInterceptors().map((i) => i.origin)).toEqual(["https://ok.example.com"]);
+    // 清理:消费掉这个刻意未使用的 interceptor,避免影响后续用例的 assertNoPendingInterceptors(本用例保持在文件末尾)
+    await fetch("https://ok.example.com/rss");
+    expect(fetchMock.pendingInterceptors()).toHaveLength(0);
+  });
 });

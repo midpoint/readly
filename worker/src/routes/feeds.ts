@@ -55,6 +55,11 @@ feeds.get("/feeds", async (c) => {
   return ok(c, rows.results.map(toFeed));
 });
 
+async function categoryExists(db: D1Database, id: number): Promise<boolean> {
+  const row = await db.prepare("SELECT id FROM categories WHERE id = ?").bind(id).first<{ id: number }>();
+  return row !== null;
+}
+
 async function subscribeOne(
   db: D1Database,
   rawUrl: string,
@@ -69,8 +74,15 @@ async function subscribeOne(
   const existing = await db.prepare("SELECT id, title FROM feeds WHERE url = ?").bind(url).first<{ id: number; title: string }>();
   if (existing) return { ok: false, url, error: "已订阅该源" };
 
-  const res = await db.prepare("INSERT INTO feeds (url, title, category_id) VALUES (?, ?, ?)").bind(url, url, categoryId).run();
-  const id = Number(res.meta.last_row_id);
+  let id: number;
+  try {
+    const res = await db.prepare("INSERT INTO feeds (url, title, category_id) VALUES (?, ?, ?)").bind(url, url, categoryId).run();
+    id = Number(res.meta.last_row_id);
+  } catch (e) {
+    // 并发重复订阅撞 url UNIQUE、或残余约束错误:优雅报告而非整批 500
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, url, error: /UNIQUE|constraint/i.test(msg) ? "已订阅该源" : "订阅写入失败" };
+  }
   try {
     const r = await fetchFeedIntoDb(db, { id, url, lastEtag: null, lastModified: null }, { initialLimit: 50 });
     const title = r.title ?? url;
@@ -104,7 +116,12 @@ feeds.post("/feeds", async (c) => {
   if (Array.isArray(body.urls)) urls.push(...body.urls.filter((u): u is string => typeof u === "string"));
   if (urls.length === 0) return fail(c, 400, "invalid_urls", "请提供 url 或 urls");
   if (urls.length > 100) return fail(c, 400, "too_many", "单次最多 100 个地址");
+  if (urls.every((u) => !u.trim())) return fail(c, 400, "invalid_urls", "请提供 url 或 urls");
   const categoryId = typeof body.categoryId === "number" ? body.categoryId : null;
+  // 先校验分类存在性,整批拒绝;避免外键约束错误逃出逐条循环导致整批 500
+  if (categoryId !== null && !(await categoryExists(c.env.DB, categoryId))) {
+    return fail(c, 400, "invalid_category", "分类不存在");
+  }
 
   const created: { id: number; url: string; title: string; itemCount: number }[] = [];
   const failed: { url: string; error: string }[] = [];
@@ -156,6 +173,10 @@ feeds.patch("/feeds/:id", async (c) => {
   const body = await c.req
     .json<{ title?: unknown; categoryId?: unknown; sortOrder?: unknown }>()
     .catch(() => ({}) as { title?: unknown; categoryId?: unknown; sortOrder?: unknown });
+  // 先校验分类存在性再执行 UPDATE,避免外键约束错误 500(categoryId 为 null 表示移到未分类,合法)
+  if (typeof body.categoryId === "number" && !(await categoryExists(c.env.DB, body.categoryId))) {
+    return fail(c, 400, "invalid_category", "分类不存在");
+  }
   const sets: string[] = [];
   const values: (string | number | null)[] = [];
   if (typeof body.title === "string" && body.title.trim()) {
@@ -172,8 +193,15 @@ feeds.patch("/feeds/:id", async (c) => {
   }
   if (sets.length === 0) return fail(c, 400, "nothing_to_update", "没有可更新字段");
   values.push(id);
-  const res = await c.env.DB.prepare(`UPDATE feeds SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
-  if (!res.meta.changes) return fail(c, 404, "not_found", "订阅不存在");
+  let changes = 0;
+  try {
+    const res = await c.env.DB.prepare(`UPDATE feeds SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
+    changes = res.meta.changes ?? 0;
+  } catch {
+    // 残余约束错误(如分类在存在性检查后被并发删除)兜底为 400 而非 500
+    return fail(c, 400, "invalid_category", "分类不存在");
+  }
+  if (!changes) return fail(c, 404, "not_found", "订阅不存在");
   const row = await c.env.DB.prepare(`${FEED_SELECT} WHERE f.id = ?`).bind(id).first<Row>();
   return ok(c, toFeed(row!));
 });
