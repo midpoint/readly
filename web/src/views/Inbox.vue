@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import type { ArticleView } from "@readly/shared";
 import ArticleList from "@/components/ArticleList.vue";
 import MobileNav from "@/components/MobileNav.vue";
 import ReaderPane from "@/components/ReaderPane.vue";
+import ShortcutHelp from "@/components/ShortcutHelp.vue";
 import Sidebar from "@/components/Sidebar.vue";
+import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useReaderStore } from "@/stores/reader";
@@ -18,6 +20,7 @@ const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
 const reader = useReaderStore();
 const settings = useSettingsStore();
+const { showShortcutHelp, toggleShortcutHelp, closeShortcutHelp } = useShortcutHelp();
 
 function numParam(v: unknown): number | null {
   return typeof v === "string" && Number.isInteger(Number(v)) ? Number(v) : null;
@@ -46,6 +49,16 @@ async function applyRouteQuery(): Promise<void> {
   }
 }
 
+// replace 被并发导航(如浏览器返回/popstate 处理中)打断时静默失败,下一拍重试一次,
+// 保证 URL 与已打开文章最终一致(后一个用户动作胜出)
+function replaceQuery(query: LocationQueryRaw): void {
+  void router.replace({ query }).catch(() => {
+    window.setTimeout(() => {
+      void router.replace({ query }).catch(() => undefined);
+    }, 0);
+  });
+}
+
 // store → URL:保留其余查询参数,仅增删 a;目标与当前一致时 no-op,避免多余导航
 function setArticleParam(id: number | null): void {
   const current = typeof route.query.a === "string" ? route.query.a : null;
@@ -56,12 +69,18 @@ function setArticleParam(id: number | null): void {
     query[k] = Array.isArray(v) ? v.filter((x): x is string => x !== null) : v;
   }
   if (id !== null) query.a = String(id);
-  void router.replace({ query });
+  replaceQuery(query);
 }
 
 onMounted(async () => {
+  // 文档级键盘监听:冷加载(未点击任意区域)即可用快捷键;输入框守卫在 onKey 内
+  document.addEventListener("keydown", onKey);
   await feedsStore.load();
   void applyRouteQuery().catch(() => undefined);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKey);
 });
 
 watch(
@@ -77,15 +96,46 @@ function closeArticle(): void {
   setArticleParam(null);
 }
 
+// 找到方向上的第一个未读并打开;到列表尾部(j 方向)自动加载一页再找一次
+async function jumpUnread(dir: 1 | -1): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const list = articles.items;
+    if (list.length > 0) {
+      const cur = list.findIndex((i) => i.id === articles.currentId);
+      let idx = cur === -1 ? (dir === 1 ? 0 : list.length - 1) : cur + dir;
+      while (idx >= 0 && idx < list.length) {
+        const item = list[idx];
+        if (item && !item.isRead && item.id !== articles.currentId) {
+          await selectArticle(item.id);
+          return;
+        }
+        idx += dir;
+      }
+    }
+    if (dir === 1 && attempt === 0 && articles.hasMore) {
+      await articles.loadMore();
+      continue;
+    }
+    return;
+  }
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  const idx = articles.items.findIndex((i) => i.id === articles.currentId);
+  if (e.key === "?") {
+    toggleShortcutHelp();
+    return;
+  }
+  if (e.key === "Escape" && showShortcutHelp.value) {
+    closeShortcutHelp();
+    return;
+  }
+  // 浮层打开时屏蔽其余快捷键(防静默后台改动);? 与 Esc 已在上面处理
+  if (showShortcutHelp.value) return;
   if (e.key === "j") {
-    const next = articles.items[Math.min(idx + 1, articles.items.length - 1)] ?? articles.items[0];
-    if (next) void selectArticle(next.id);
+    void jumpUnread(1).catch(() => undefined);
   } else if (e.key === "k") {
-    const prev = articles.items[Math.max(idx - 1, 0)];
-    if (prev) void selectArticle(prev.id);
+    void jumpUnread(-1).catch(() => undefined);
   } else if (e.key === "Escape") {
     closeArticle();
   } else if (reader.article) {
@@ -113,7 +163,7 @@ async function selectArticle(id: number) {
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950" tabindex="0" @keydown="onKey">
+  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950">
     <Sidebar class="hidden md:flex" />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div
@@ -126,5 +176,6 @@ async function selectArticle(id: number) {
       <div v-else class="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">选择左侧文章开始阅读</div>
     </div>
     <MobileNav v-if="!reader.article" />
+    <ShortcutHelp />
   </div>
 </template>

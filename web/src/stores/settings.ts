@@ -32,6 +32,9 @@ export function sanitizePrefs(raw: unknown): ReaderPrefs {
     autoMarkReadOnOpen: o.autoMarkReadOnOpen !== false,
     autoMarkReadOnScroll: o.autoMarkReadOnScroll !== false,
     unreadOnly: o.unreadOnly === true,
+    collapsedCategoryIds: Array.isArray(o.collapsedCategoryIds)
+      ? [...new Set(o.collapsedCategoryIds.filter((v): v is number => typeof v === "number" && Number.isInteger(v)))].slice(0, 200)
+      : [],
   };
 }
 

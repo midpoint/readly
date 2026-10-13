@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Feed } from "@readly/shared";
 import { api } from "@/api/client";
 import Sidebar from "@/components/Sidebar.vue";
+import { useShortcutHelp } from "@/composables/useShortcutHelp";
+import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -261,5 +263,57 @@ describe("Sidebar 源入口", () => {
     await nextTick();
     await nextTick();
     expect(container.textContent).toContain("零未读");
+  });
+
+  it("分类折叠:点箭头隐藏源并持久化,点分类名仍是筛选,再点恢复", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/categories") return Promise.resolve([{ id: 1, name: "科技", sortOrder: 0, createdAt: "2025-10-13T00:00:00.000Z" }]);
+      if (path === "/api/feeds")
+        return Promise.resolve([{ ...FEED, id: 1, url: "https://a.example.com/rss", title: "源甲", categoryId: 1, unreadCount: 1 }]);
+      if (path === "/api/stats") return Promise.resolve({ unreadTotal: 1, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+      if (path === "/api/articles") return Promise.resolve({ items: [], nextCursor: null });
+      return Promise.resolve(null);
+    });
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    expect(container.textContent).toContain("源甲");
+    const chevron = container.querySelector<HTMLButtonElement>('[data-collapse="1"]')!;
+    expect(chevron.getAttribute("aria-expanded")).toBe("true");
+    chevron.click();
+    await flush();
+    expect(container.textContent).not.toContain("源甲");
+    expect(chevron.getAttribute("aria-expanded")).toBe("false");
+    expect(useSettingsStore().prefs.collapsedCategoryIds).toContain(1);
+    // 点分类名仍是筛选(不等同于折叠)
+    const nameBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("科技"))!;
+    nameBtn.click();
+    await flush();
+    expect(useArticlesStore().categoryId).toBe(1);
+    expect(container.textContent).not.toContain("源甲"); // 折叠未因筛选被重置
+    chevron.click();
+    await flush();
+    expect(container.textContent).toContain("源甲");
+    expect(useSettingsStore().prefs.collapsedCategoryIds).not.toContain(1);
+  });
+
+  it("「快捷键」按钮打开帮助浮层开关(模块级单例)", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    const btn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("快捷键"));
+    expect(btn).toBeTruthy();
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
+    btn!.click();
+    await flush();
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(true);
+    useShortcutHelp().closeShortcutHelp(); // 复位单例,避免污染其它用例
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
   });
 });
