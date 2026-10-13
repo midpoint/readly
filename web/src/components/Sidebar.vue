@@ -167,7 +167,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
 </script>
 
 <template>
-  <aside class="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-200">
+  <aside class="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200">
     <div class="flex items-center justify-between px-4 py-3">
       <h1 class="text-base font-semibold">Readly</h1>
       <button class="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white" @click="router.push('/add')">
