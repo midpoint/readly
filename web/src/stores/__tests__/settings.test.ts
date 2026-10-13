@@ -96,6 +96,26 @@ describe("settings store", () => {
     expect(vi.mocked(api)).not.toHaveBeenCalled();
   });
 
+  it("initRemote:GET 在途期间本地被写入 → 服务端值不覆盖", async () => {
+    let resolveApi!: (v: unknown) => void;
+    const pending = new Promise((res) => {
+      resolveApi = res;
+    });
+    vi.mocked(api).mockReturnValue(pending);
+    const store = useSettingsStore();
+    store.initLocal(); // 无本地偏好:进入拉取路径
+    const inflight = store.initRemote(); // 不 await:GET 在途
+    store.updatePrefs({ fontSize: 21 }); // 在途期间写入本地(prev 值不同于默认)
+    resolveApi({ reader_prefs: { ...DEFAULT_READER_PREFS, themeMode: "dark", readingTheme: "night" } });
+    await inflight;
+    // 本地写入为真源:服务端快照不得覆盖(夜间主题与主题模式都不生效)
+    expect(store.prefs.readingTheme).toBe("classic");
+    expect(store.prefs.themeMode).toBe(DEFAULT_READER_PREFS.themeMode);
+    expect(store.prefs.fontSize).toBe(21);
+    expect(document.documentElement.dataset.readingTheme).toBe("classic");
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
   it("重复推送相同值被抑制(serverCopy 去重)", async () => {
     vi.mocked(api).mockResolvedValue({ ok: true });
     const store = useSettingsStore();

@@ -65,15 +65,18 @@ export const useSettingsStore = defineStore("settings", () => {
   async function initRemote(): Promise<void> {
     // 本地已有偏好:本地为真源,不拉取服务端、不回写
     if (readLocal() !== null) {
-      serverCopy = JSON.stringify(prefs.value);
+      serverCopy = JSON.stringify(readLocal());
       return;
     }
     const all = await api<Record<string, unknown>>("/api/settings");
     const serverPrefs = all[SETTING_KEYS.readerPrefs];
     if (serverPrefs === undefined) return;
     serverCopy = JSON.stringify(sanitizePrefs(serverPrefs));
-    prefs.value = sanitizePrefs(serverPrefs);
-    apply();
+    // GET 在途期间本地被写入(如另一处 updatePrefs)时,本地为真源,不再套用服务端快照
+    if (readLocal() === null) {
+      prefs.value = sanitizePrefs(serverPrefs);
+      apply();
+    }
   }
 
   function initSystemWatch(): void {

@@ -104,13 +104,13 @@ async function selectArticle(id: number) {
   setArticleParam(id);
   const item = articles.items.find((i) => i.id === id);
   if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead) {
-    void articles.setState(id, { isRead: true });
+    void articles.setState(id, { isRead: true }).catch(() => undefined);
   }
 }
 </script>
 
 <template>
-  <div class="flex h-full flex-col md:flex-row" tabindex="0" @keydown="onKey">
+  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950" tabindex="0" @keydown="onKey">
     <Sidebar class="hidden md:flex" />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div

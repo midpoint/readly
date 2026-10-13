@@ -71,7 +71,8 @@ async function select(id: number) {
   // store → URL:点击打开也要同步 ?a=,与 Inbox 的键盘路径一致(相同则 no-op,不回环)
   if (route.query.a !== String(id)) void router.replace({ query: { ...route.query, a: String(id) } });
   const item = articles.items.find((i) => i.id === id);
-  if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead) void articles.setState(id, { isRead: true });
+  if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead)
+    void articles.setState(id, { isRead: true }).catch(() => undefined);
 }
 </script>
 

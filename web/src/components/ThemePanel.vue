@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { DEFAULT_READER_PREFS, type ReaderPrefs } from "@readly/shared";
+import type { ReaderPrefs } from "@readly/shared";
 import { ACCENT_PRESETS, FONT_STACKS, READING_THEMES } from "@/modules/theme";
 import { useSettingsStore } from "@/stores/settings";
 

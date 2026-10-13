@@ -29,7 +29,7 @@ async function toggle(patch: { isRead?: boolean; isStarred?: boolean; isLater?: 
   }
 }
 
-const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
+const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:text-neutral-200";
 
 const settings = useSettingsStore();
 const bottomSentinel = ref<HTMLElement | null>(null);
@@ -55,11 +55,11 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
 </script>
 
 <template>
-  <section class="flex h-full flex-1 flex-col overflow-hidden">
+  <section class="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-neutral-950">
     <template v-if="reader.article">
       <header class="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-4">
-          <button class="md:hidden shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700" @click="emit('close')">← 返回</button>
+          <button class="md:hidden shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700 dark:text-neutral-200" @click="emit('close')">← 返回</button>
           <div class="min-w-0 text-xs text-neutral-500">
             <span>{{ reader.article.feedTitle }}</span>
             <span> · </span>
@@ -79,7 +79,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             <a v-if="reader.article.url" :href="reader.article.url" target="_blank" rel="noopener noreferrer" :class="btn">原文</a>
           </div>
         </div>
-        <h2 class="mt-2 text-xl font-semibold leading-snug">{{ reader.article.title }}</h2>
+        <h2 class="mt-2 text-xl font-semibold leading-snug dark:text-neutral-100">{{ reader.article.title }}</h2>
         <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
       </header>
       <div class="relative flex min-h-0 flex-1">
