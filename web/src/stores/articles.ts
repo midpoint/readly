@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import type { ArticleListItem, ArticleView, ArticlesPage } from "@readly/shared";
 import { api } from "@/api/client";
 import { useFeedsStore } from "./feeds";
+import { useSettingsStore } from "./settings";
 
 interface StatePatch {
   isRead?: boolean;
@@ -52,6 +53,7 @@ export const useArticlesStore = defineStore("articles", () => {
           category_id: categoryId.value ?? undefined,
           cursor: reset ? undefined : (cursor.value ?? undefined),
           limit: 30,
+          unread: useSettingsStore().prefs.unreadOnly ? 1 : undefined,
         },
       });
       if (reset) items.value = page.items;

@@ -2,12 +2,23 @@
 import { computed } from "vue";
 import type { ReaderPrefs } from "@readly/shared";
 import { ACCENT_PRESETS, FONT_STACKS, READING_THEMES } from "@/modules/theme";
+import { useArticlesStore } from "@/stores/articles";
 import { useSettingsStore } from "@/stores/settings";
 
 const emit = defineEmits<{ close: [] }>();
 
 const settings = useSettingsStore();
+const articles = useArticlesStore();
 const prefs = computed(() => settings.prefs);
+
+async function setUnreadOnly(e: Event): Promise<void> {
+  settings.updatePrefs({ unreadOnly: (e.target as HTMLInputElement).checked });
+  try {
+    await articles.load(true);
+  } catch {
+    // 静默:偏好已生效,列表可下次刷新恢复
+  }
+}
 
 // paper 主题的规格含衬线,主题卡=颜色+字体预设组合;字体族滑块仍可事后覆盖
 const THEME_FONTS: Partial<Record<string, ReaderPrefs["fontFamily"]>> = { paper: "serif" };
@@ -133,6 +144,10 @@ const seg = (active: boolean) =>
       <label class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
         <input type="checkbox" :checked="prefs.autoMarkReadOnScroll" class="accent-[var(--accent)]" @change="settings.updatePrefs({ autoMarkReadOnScroll: ($event.target as HTMLInputElement).checked })" />
         滚动到底自动已读
+      </label>
+      <label class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        <input type="checkbox" :checked="prefs.unreadOnly" class="accent-[var(--accent)]" @change="setUnreadOnly" />
+        列表与侧栏只显示未读
       </label>
     </div>
 

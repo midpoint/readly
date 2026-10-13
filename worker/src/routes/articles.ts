@@ -54,6 +54,9 @@ articles.get("/articles", async (c) => {
   if (view === "starred") where.push("COALESCE(s.is_starred, 0) = 1");
   if (view === "later") where.push("COALESCE(s.is_later, 0) = 1");
 
+  const unreadParam = c.req.query("unread");
+  if (unreadParam === "1" || unreadParam === "true") where.push("COALESCE(s.is_read, 0) = 0");
+
   const feedId = c.req.query("feed_id");
   if (feedId !== undefined && feedId !== "") {
     binds.push(Number(feedId));

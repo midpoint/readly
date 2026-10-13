@@ -149,6 +149,7 @@ export interface ReaderPrefs {
   fontFamily: "system" | "serif";
   autoMarkReadOnOpen: boolean;
   autoMarkReadOnScroll: boolean;
+  unreadOnly: boolean;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPrefs = {
@@ -161,6 +162,7 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   fontFamily: "system",
   autoMarkReadOnOpen: true,
   autoMarkReadOnScroll: true,
+  unreadOnly: false,
 };
 
 export const SETTING_KEYS = {

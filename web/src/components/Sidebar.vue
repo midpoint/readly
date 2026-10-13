@@ -5,9 +5,11 @@ import { useRouter } from "vue-router";
 import type { Feed } from "@readly/shared";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
+import { useSettingsStore } from "@/stores/settings";
 
 const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
+const settings = useSettingsStore();
 const router = useRouter();
 
 const stats = computed(() => feedsStore.stats);
@@ -21,9 +23,19 @@ function select(view: "all" | "unread" | "starred" | "later", feedId: number | n
   void articles.setFilter(view, feedId, categoryId).catch(() => undefined);
 }
 
-function feedsOf(categoryId: number | null) {
-  return feedsStore.feeds.filter((f) => (categoryId === null ? f.categoryId === null : f.categoryId === categoryId));
+function visibleFeeds(categoryId: number | null) {
+  return feedsStore.feeds.filter(
+    (f) =>
+      (categoryId === null ? f.categoryId === null : f.categoryId === categoryId) &&
+      (!settings.prefs.unreadOnly || f.unreadCount > 0)
+  );
 }
+
+const visibleCategories = computed(() =>
+  settings.prefs.unreadOnly
+    ? feedsStore.categories.filter((c) => visibleFeeds(c.id).length > 0)
+    : feedsStore.categories
+);
 
 const navItem = "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-sm text-left hover:bg-neutral-200/60 dark:hover:bg-neutral-800";
 const menuItem = "block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800";
@@ -192,12 +204,12 @@ async function confirmDelete(feed: Feed): Promise<void> {
       </button>
     </nav>
     <div class="mt-4 flex-1 overflow-y-auto px-2 pb-4">
-      <template v-for="cat in feedsStore.categories" :key="cat.id">
+      <template v-for="cat in visibleCategories" :key="cat.id">
         <button :class="[navItem, 'mt-2 font-medium text-neutral-500']" @click="select('all', null, cat.id)">
           <span class="truncate">{{ cat.name }}</span>
           <span v-if="stats?.perCategory[cat.id]" class="text-xs">{{ stats.perCategory[cat.id] }}</span>
         </button>
-        <div v-for="feed in feedsOf(cat.id)" :key="feed.id" class="group relative flex items-center">
+        <div v-for="feed in visibleFeeds(cat.id)" :key="feed.id" class="group relative flex items-center">
           <input
             v-if="renamingId === feed.id"
             :ref="focusRename"
@@ -240,10 +252,14 @@ async function confirmDelete(feed: Feed): Promise<void> {
           </div>
         </div>
       </template>
-      <button :class="[navItem, 'mt-2 font-medium text-neutral-500']" @click="select('all')">
+      <button
+        v-if="!settings.prefs.unreadOnly || visibleFeeds(null).length > 0"
+        :class="[navItem, 'mt-2 font-medium text-neutral-500']"
+        @click="select('all')"
+      >
         <span>未分类</span>
       </button>
-      <div v-for="feed in feedsOf(null)" :key="feed.id" class="group relative flex items-center">
+      <div v-for="feed in visibleFeeds(null)" :key="feed.id" class="group relative flex items-center">
         <input
           v-if="renamingId === feed.id"
           :ref="focusRename"

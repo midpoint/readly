@@ -54,6 +54,19 @@ describe("articles API", () => {
     expect(detail.isLater).toBe(true);
   });
 
+  it("unread=1 与 view 组合过滤", async () => {
+    const { ids } = await seed();
+    await apiFetch(`/api/articles/${ids[0]}`, { method: "PATCH", body: { is_starred: true } });
+    await apiFetch(`/api/articles/${ids[1]}`, { method: "PATCH", body: { is_starred: true } });
+    await apiFetch(`/api/articles/${ids[1]}`, { method: "PATCH", body: { is_read: true } });
+    const starred = (await (await apiFetch("/api/articles?view=starred")).json()) as { items: unknown[] };
+    expect(starred.items).toHaveLength(2);
+    const starredUnread = (await (await apiFetch("/api/articles?view=starred&unread=1")).json()) as { items: unknown[] };
+    expect(starredUnread.items).toHaveLength(1);
+    const allUnread = (await (await apiFetch("/api/articles?unread=1")).json()) as { items: unknown[] };
+    expect(allUnread.items).toHaveLength(4);
+  });
+
   it("标全部已读(按源),保留已有收藏", async () => {
     const { feedId, ids } = await seed();
     await apiFetch(`/api/articles/${ids[0]}`, { method: "PATCH", body: { is_starred: true } });

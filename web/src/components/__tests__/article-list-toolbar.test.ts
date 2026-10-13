@@ -151,4 +151,42 @@ describe("ArticleList 顶部工具栏", () => {
     expect(header!.classList.contains("top-9")).toBe(true);
     expect(header!.classList.contains("top-0")).toBe(false);
   });
+
+  it("「只看未读」开关写入偏好并重载列表", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    const btn = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("只看未读"));
+    expect(btn).toBeTruthy();
+    btn!.click();
+    await flush();
+
+    const last = vi.mocked(api).mock.calls.filter(([p]) => p === "/api/articles").at(-1)!;
+    expect((last[1]!.query as Record<string, unknown>).unread).toBe(1);
+    const { useSettingsStore } = await import("@/stores/settings");
+    expect(useSettingsStore().prefs.unreadOnly).toBe(true);
+  });
+
+  it("重载失败时偏好保持且无未处理拒绝", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    // 挂载成功后列表重载失败
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/articles") return Promise.reject(new Error("boom"));
+      return Promise.resolve(null);
+    });
+    const btn = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("只看未读"))!;
+    btn.click();
+    await flush();
+
+    const { useSettingsStore } = await import("@/stores/settings");
+    expect(useSettingsStore().prefs.unreadOnly).toBe(true);
+  });
 });

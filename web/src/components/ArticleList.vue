@@ -50,6 +50,15 @@ async function markAllAsRead(): Promise<void> {
   }
 }
 
+async function toggleUnreadOnly(): Promise<void> {
+  settings.updatePrefs({ unreadOnly: !settings.prefs.unreadOnly });
+  try {
+    await articles.load(true);
+  } catch {
+    // 静默:偏好已生效,列表可下次刷新恢复
+  }
+}
+
 let observer: IntersectionObserver | null = null;
 
 onMounted(() => {
@@ -82,13 +91,23 @@ async function select(id: number) {
       class="sticky top-0 z-20 flex h-9 items-center justify-between gap-2 border-b border-neutral-200/70 bg-neutral-50/90 px-4 text-xs backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/90"
     >
       <span class="truncate font-medium text-neutral-500">{{ scopeLabel }}</span>
-      <button
-        class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
-        :disabled="markingAllRead"
-        @click="markAllAsRead"
-      >
-        全部标已读
-      </button>
+      <div class="flex shrink-0 items-center gap-1">
+        <button
+          class="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
+          :class="settings.prefs.unreadOnly ? 'text-[var(--accent)]' : 'text-neutral-500'"
+          :title="settings.prefs.unreadOnly ? '显示全部文章' : '只显示未读'"
+          @click="toggleUnreadOnly"
+        >
+          只看未读
+        </button>
+        <button
+          class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+          :disabled="markingAllRead"
+          @click="markAllAsRead"
+        >
+          全部标已读
+        </button>
+      </div>
     </div>
     <template v-for="group in groups" :key="group.label">
       <DateGroupHeader :label="group.label" />
