@@ -136,7 +136,7 @@ const tabCls = (active: boolean) =>
     </div>
 
     <div v-else-if="tab === 'batch'" class="mt-6 space-y-3">
-      <p class="text-sm text-neutral-500">每行一个 feed 地址,最多 100 个</p>
+      <p class="text-sm text-neutral-500">每行一个 feed 地址(自动分批提交)</p>
       <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900" placeholder="https://a.com/feed&#10;https://b.com/rss" />
       <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
         批量订阅

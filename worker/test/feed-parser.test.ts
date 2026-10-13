@@ -155,4 +155,18 @@ describe("parseFeed", () => {
     const r = parseFeed(RSS_NO_GUID);
     expect(r.items[0]!.guid).toBe(fnv1a("https://example.com/stable-link"));
   });
+  it("content 超 300KB 截断到 256KB,excerpt 基于截断后文本", () => {
+    const body = "a".repeat(320 * 1024);
+    const xml = `<?xml version="1.0"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>大源</title>
+<item><title>超长正文</title><guid>big-1</guid><content:encoded><![CDATA[<p>${body}</p>]]></content:encoded></item>
+</channel></rss>`;
+    const r = parseFeed(xml);
+    const it0 = r.items[0]!;
+    expect(it0.content!.length).toBeLessThanOrEqual(256 * 1024);
+    // 输入正文 320KB,若未截断长度必然超限;恰为上限即证明截断发生
+    expect(it0.content!.length).toBe(256 * 1024);
+    // excerpt 基于截断后文本(strip 后取 400 字符 + 省略号),不随原始大小膨胀
+    expect(it0.excerpt!.length).toBe(401);
+  });
 });

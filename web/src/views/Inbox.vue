@@ -30,7 +30,10 @@ async function applyRouteQuery(): Promise<void> {
     : "all";
   const feedId = numParam(route.query.feed);
   const categoryId = numParam(route.query.category);
-  if (view !== articles.view || feedId !== articles.feedId || categoryId !== articles.categoryId) {
+  const filterChanged =
+    view !== articles.view || feedId !== articles.feedId || categoryId !== articles.categoryId;
+  // 冷启动(URL 无参 == store 默认值)也必须触发首次拉取,故叠加「未加载过」条件
+  if (filterChanged || !articles.loaded) {
     await articles.setFilter(view, feedId, categoryId);
   }
   const articleId = numParam(route.query.a);

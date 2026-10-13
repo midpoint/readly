@@ -101,4 +101,22 @@ describe("refreshDueFeeds", () => {
     const row = await env.DB.prepare("SELECT next_refresh_at FROM feeds WHERE id = ?").bind(id).first<{ next_refresh_at: string }>();
     expect(new Date(row!.next_refresh_at).getTime()).toBeGreaterThanOrEqual(before + 60_000);
   });
+
+  it("settings 非数值(JSON 字符串)回退默认:批 2、间隔 30 分钟", async () => {
+    // HTTP 设置路由校验数值,带引号的 JSON 字符串只能直写库表:JSON.parse 得到字符串 "abc"
+    const now = new Date().toISOString();
+    const stmt = "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)";
+    await env.DB.prepare(stmt).bind("refresh_batch_size", '"abc"', now).run();
+    await env.DB.prepare(stmt).bind("refresh_interval", '"abc"', now).run();
+    const first = await insertFeed("https://a.example.com/feed");
+    await insertFeed("https://b.example.com/feed");
+    await insertFeed("https://c.example.com/feed");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(FEED_XML(1), { status: 200 }));
+    const before = Date.now();
+    const r = await refreshDueFeeds(env.DB, { fetchFn: fetchMock as unknown as typeof fetch });
+    expect(r.processed).toBe(2);
+    expect(r.remaining).toBe(1);
+    const row = await env.DB.prepare("SELECT next_refresh_at FROM feeds WHERE id = ?").bind(first).first<{ next_refresh_at: string }>();
+    expect(new Date(row!.next_refresh_at).getTime()).toBeGreaterThanOrEqual(before + 30 * 60_000);
+  });
 });

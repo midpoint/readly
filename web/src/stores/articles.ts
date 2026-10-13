@@ -14,6 +14,8 @@ export const useArticlesStore = defineStore("articles", () => {
   const cursor = ref<string | null>(null);
   const hasMore = ref(true);
   const loading = ref(false);
+  // 是否曾成功加载过:冷启动(URL 无参)时也需触发首次拉取,由 Inbox 的守卫消费
+  const loaded = ref(false);
   const view = ref<ArticleView>("all");
   const feedId = ref<number | null>(null);
   const categoryId = ref<number | null>(null);
@@ -47,6 +49,7 @@ export const useArticlesStore = defineStore("articles", () => {
       }
       cursor.value = page.nextCursor;
       hasMore.value = page.nextCursor !== null;
+      loaded.value = true;
     } finally {
       loading.value = false;
       if (pendingReset) {
@@ -104,6 +107,7 @@ export const useArticlesStore = defineStore("articles", () => {
     items,
     loading,
     hasMore,
+    loaded,
     view,
     feedId,
     categoryId,

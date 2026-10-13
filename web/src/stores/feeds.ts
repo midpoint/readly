@@ -28,17 +28,21 @@ export const useFeedsStore = defineStore("feeds", () => {
   async function addFeeds(urls: string[], categoryId: number | null): Promise<{ created: number; failed: { url: string; error: string }[] }> {
     const createdAll: { id: number }[] = [];
     const failedAll: { url: string; error: string }[] = [];
-    for (let i = 0; i < urls.length; i += 100) {
-      const slice = urls.slice(i, i + 100);
-      const res = await api<{ created: { id: number }[]; failed: { url: string; error: string }[] }>("/api/feeds", {
-        method: "POST",
-        body: { urls: slice, categoryId },
-      });
-      createdAll.push(...res.created);
-      failedAll.push(...res.failed);
+    try {
+      for (let i = 0; i < urls.length; i += 100) {
+        const slice = urls.slice(i, i + 100);
+        const res = await api<{ created: { id: number }[]; failed: { url: string; error: string }[] }>("/api/feeds", {
+          method: "POST",
+          body: { urls: slice, categoryId },
+        });
+        createdAll.push(...res.created);
+        failedAll.push(...res.failed);
+      }
+      return { created: createdAll.length, failed: failedAll };
+    } finally {
+      // 中途分片失败时已入库的源也要能回显;load 失败照常向上抛,由调用方展示
+      await load();
     }
-    await load();
-    return { created: createdAll.length, failed: failedAll };
   }
 
   async function discover(url: string): Promise<{ url: string; title: string; type: string }[]> {

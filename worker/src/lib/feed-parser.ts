@@ -59,6 +59,9 @@ function firstImageInHtml(html: string): string | null {
   return m?.[1] ?? null;
 }
 
+// 入库 content 上限 256KB:先 sanitize 再截断,excerpt 基于截断后的文本计算
+const MAX_CONTENT_LENGTH = 256 * 1024;
+
 function makeItem(parts: {
   guid: string | null;
   url: string | null;
@@ -70,7 +73,8 @@ function makeItem(parts: {
 }): ParsedItem {
   const title = parts.title.trim() || "(无标题)";
   const publishedAt = parseDate(parts.published);
-  const content = parts.rawContent ? sanitizeFeedHtml(parts.rawContent) : null;
+  const sanitizedContent = parts.rawContent ? sanitizeFeedHtml(parts.rawContent) : null;
+  const content = sanitizedContent === null ? null : sanitizedContent.slice(0, MAX_CONTENT_LENGTH);
   const guid = parts.guid?.trim() || fnv1a(parts.url ?? title);
   return {
     guid,
