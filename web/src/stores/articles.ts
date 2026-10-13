@@ -51,7 +51,7 @@ export const useArticlesStore = defineStore("articles", () => {
       loading.value = false;
       if (pendingReset) {
         pendingReset = false;
-        void fetchPage(true);
+        void fetchPage(true).catch(() => undefined);
       }
     }
   }
