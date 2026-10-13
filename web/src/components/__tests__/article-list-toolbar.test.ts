@@ -138,4 +138,17 @@ describe("ArticleList 顶部工具栏", () => {
     expect(queries.length).toBe(queriesBefore + 1);
     expect(queries[queries.length - 1]!.feed_id).toBe(3);
   });
+
+  it("日期分组头 sticky 偏移 top-9,钉在 36px 工具栏之下", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    const header = [...container.querySelectorAll(".sticky")].find((el) => el.textContent?.includes("更早"));
+    expect(header).toBeTruthy();
+    expect(header!.classList.contains("top-9")).toBe(true);
+    expect(header!.classList.contains("top-0")).toBe(false);
+  });
 });

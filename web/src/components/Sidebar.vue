@@ -51,11 +51,16 @@ async function refreshFeeds(): Promise<void> {
   refreshStatus.value = "busy";
   try {
     await feedsStore.refreshAll();
-    await feedsStore.load();
-    await articles.load(true);
     refreshStatus.value = "done";
   } catch {
     refreshStatus.value = "error";
+  }
+  // 刷新结果已定;重载失败不改写状态(否则刷新成功却显示「刷新失败」)
+  try {
+    await feedsStore.load();
+    await articles.load(true);
+  } catch {
+    // 重载失败静默
   }
   // 短暂展示结果后还原(重复触发时重置计时)
   if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
@@ -113,12 +118,17 @@ function startRename(feed: Feed): void {
 }
 
 function cancelRename(): void {
-  renamingId.value = null;
+  // Esc 取消重命名并收起菜单(输入框上的 .stop 会拦住 document 级 Esc 关闭)
+  closeMenu();
 }
 
-// 稳定函数 ref:只在输入框挂载时聚焦,避免每次渲染重复 select
+// 函数式 ref 在每次 vnode patch(键入重渲染)都会被调用;WeakSet 守卫保证仅首次聚焦+全选,
+// 否则每敲一键都会重新 select() 全选,输入不可用
+const focusedOnce = new WeakSet<Element>();
+
 function focusRename(el: Element | ComponentPublicInstance | null): void {
-  if (el instanceof HTMLInputElement) {
+  if (el instanceof HTMLInputElement && !focusedOnce.has(el)) {
+    focusedOnce.add(el);
     el.focus();
     el.select();
   }

@@ -71,6 +71,31 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement | 
   return [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === label);
 }
 
+// 打开某源行的「⋯」→「重命名」,返回行内输入框
+async function openRename(container: HTMLElement): Promise<HTMLInputElement> {
+  const menuButton = container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]');
+  expect(menuButton).toBeTruthy();
+  menuButton!.click();
+  await nextTick();
+  await nextTick();
+  const renameItem = findButton(container, "重命名");
+  expect(renameItem).toBeTruthy();
+  renameItem!.click();
+  await nextTick();
+  await nextTick();
+  const input = container.querySelector<HTMLInputElement>("input");
+  expect(input).toBeTruthy();
+  return input!;
+}
+
+// 模拟键入:设值 + input 事件 + 等 Vue 重渲染
+async function typeInto(input: HTMLInputElement, value: string): Promise<void> {
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await nextTick();
+  await nextTick();
+}
+
 beforeEach(() => {
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation((path) => {
@@ -137,28 +162,71 @@ describe("Sidebar 源入口", () => {
     await feedsStore.load();
     const container = await mountSidebar(pinia, flush);
 
-    const menuButton = container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]');
-    expect(menuButton).toBeTruthy();
-    menuButton!.click();
-    await nextTick();
-    await nextTick();
+    const input = await openRename(container);
+    expect(input.value).toBe("示例源"); // 预填当前标题
 
-    const renameItem = findButton(container, "重命名");
-    expect(renameItem).toBeTruthy();
-    renameItem!.click();
-    await nextTick();
-    await nextTick();
-
-    const input = container.querySelector("input");
-    expect(input).toBeTruthy();
-    expect((input as HTMLInputElement).value).toBe("示例源"); // 预填当前标题
-
-    (input as HTMLInputElement).value = "新名字";
-    input!.dispatchEvent(new Event("input", { bubbles: true }));
-    await nextTick();
-    input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await typeInto(input, "新名字");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     await flush();
 
     expect(api).toHaveBeenCalledWith("/api/feeds/3", { method: "PATCH", body: { title: "新名字" } });
+  });
+
+  it("重命名中按 Esc:取消并收起菜单", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    const input = await openRename(container);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(container.querySelector("input")).toBeNull();
+    expect(findButton(container, "重命名")).toBeUndefined(); // 菜单不复活
+    expect(api).not.toHaveBeenCalledWith("/api/feeds/3", expect.objectContaining({ method: "PATCH" }));
+  });
+
+  it("刷新成功但重载失败时仍显示「已刷新」而非「刷新失败」", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/refresh" && opts?.method === "POST") return Promise.resolve({ done: true, processed: 1, remaining: 0 });
+      if (path === "/api/articles") return Promise.reject(new Error("boom")); // 重载失败
+      if (path === "/api/categories") return Promise.resolve([]);
+      if (path === "/api/feeds") return Promise.resolve([FEED]);
+      if (path === "/api/stats")
+        return Promise.resolve({ unreadTotal: 2, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+      return Promise.resolve(null);
+    });
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    const button = findButton(container, "刷新订阅");
+    expect(button).toBeTruthy();
+    button!.click();
+    await flush();
+
+    expect(button!.textContent?.trim()).toBe("已刷新");
+  });
+
+  it("重命名输入连续键入不被每次全选(光标留在末尾)", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    const input = await openRename(container);
+    expect(document.activeElement).toBe(input); // 打开即聚焦
+
+    await typeInto(input, "新名字");
+    await typeInto(input, "新名字啊");
+
+    // 每次键入触发重渲染,若 ref 回调重复 select() 会全选(selectionStart=0)
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(input.value.length);
   });
 });
