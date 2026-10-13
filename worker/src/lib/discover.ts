@@ -16,13 +16,13 @@ const FEED_TYPES = [
 
 const COMMON_PATHS = ["/feed", "/rss", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml", "/feed/"];
 
-function looksLikeFeed(body: string, contentType: string | null): boolean {
-  if (contentType && (contentType.includes("xml") || contentType.includes("json"))) {
-    const head = body.slice(0, 500).trimStart();
-    return /^<(\?xml|rss|feed|rdf)/i.test(head) || head.startsWith("{");
-  }
-  const head = body.slice(0, 500).trimStart();
-  return /^<(\?xml|rss|feed|rdf:RDF)/i.test(head) || /"version"\s*:\s*"https:\/\/jsonfeed\.org/.test(head);
+function looksLikeFeed(body: string): boolean {
+  const head = body.slice(0, 1000);
+  const stripped = head.replace(/^<\?xml[^>]*\?>/, "").trimStart();
+  if (/^<rss[\s>]/i.test(stripped) || /^<feed[\s>]/i.test(stripped) || /^<rdf[:R]?[DF]*[\s>]/i.test(stripped)) return true;
+  if (/<rss[\s>]/i.test(head) || /<rdf:RDF/i.test(head) || /<feed[^>]+xmlns/i.test(head)) return true;
+  if (/"version"\s*:\s*"https:\/\/jsonfeed\.org/.test(head)) return true;
+  return false;
 }
 
 function scanLinks(html: string, baseUrl: string): FeedCandidate[] {
@@ -59,8 +59,8 @@ export async function discoverFeeds(
     throw new Error(`目标页面无法访问(HTTP ${page.status})`);
   }
   const contentType = page.headers.get("Content-Type");
-  if (looksLikeFeed(page.body, contentType)) {
-    return [{ url: page.finalUrl, title: "", type: contentType ?? "application/xml" }];
+  if (looksLikeFeed(page.body)) {
+    return [{ url: page.finalUrl, title: "", type: contentType?.split(";")[0]?.trim().toLowerCase() ?? "application/xml" }];
   }
 
   const fromLinks = scanLinks(page.body, page.finalUrl);
@@ -72,8 +72,8 @@ export async function discoverFeeds(
     const candidate = new URL(path, base).toString();
     try {
       const res = await fetchText(candidate, { maxBytes: 64 * 1024, timeoutMs: 8000 }, fetchFn);
-      if (res.status >= 200 && res.status < 300 && looksLikeFeed(res.body, res.headers.get("Content-Type"))) {
-        found.push({ url: res.finalUrl, title: "", type: res.headers.get("Content-Type") ?? "application/xml" });
+      if (res.status >= 200 && res.status < 300 && looksLikeFeed(res.body)) {
+        found.push({ url: res.finalUrl, title: "", type: res.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase() ?? "application/xml" });
         break;
       }
     } catch {
