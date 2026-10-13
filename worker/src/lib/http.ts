@@ -70,7 +70,8 @@ export async function fetchText(
       if (e instanceof DOMException && e.name === "AbortError") throw new Error("抓取超时");
       throw new Error("网络请求失败");
     }
-    if (res.status >= 300 && res.status < 400) {
+    // 304 是条件请求的直接响应而非重定向(RFC 9110 无 Location),按最终响应返回
+    if (res.status >= 300 && res.status < 400 && res.status !== 304) {
       const location = res.headers.get("Location");
       if (!location) throw new Error("重定向缺少目标地址");
       if (hop === 5) throw new Error("重定向次数过多");

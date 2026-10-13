@@ -5,6 +5,7 @@ import { authMiddleware } from "./auth";
 import { fail } from "./respond";
 import auth from "./routes/auth";
 import health from "./routes/health";
+import { refreshDueFeeds } from "./lib/refresh";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -21,7 +22,7 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller: ScheduledController, _env: Env, _ctx: ExecutionContext) {
-    // Task 8 接入刷新;Task 18 配置 cron 触发器
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(refreshDueFeeds(env.DB));
   },
 } satisfies ExportedHandler<Env>;
