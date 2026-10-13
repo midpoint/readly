@@ -18,7 +18,7 @@ function select(view: "all" | "unread" | "starred" | "later", feedId: number | n
   if (feedId !== null) query.feed = String(feedId);
   if (categoryId !== null) query.category = String(categoryId);
   void router.replace({ path: "/", query });
-  void articles.setFilter(view, feedId, categoryId);
+  void articles.setFilter(view, feedId, categoryId).catch(() => undefined);
 }
 
 function feedsOf(categoryId: number | null) {

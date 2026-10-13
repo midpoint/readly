@@ -42,13 +42,13 @@ function onCustomColor(e: Event): void {
 }
 
 const section = "mt-4";
-const label = "text-xs font-medium text-neutral-500";
+const label = "text-xs font-medium text-neutral-500 dark:text-neutral-400";
 const seg = (active: boolean) =>
   `flex-1 rounded-md px-2 py-1 text-xs ${active ? "bg-[var(--accent)] text-white" : "text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-300 dark:hover:bg-neutral-800"}`;
 </script>
 
 <template>
-  <aside class="flex h-full w-72 flex-col overflow-y-auto border-l border-neutral-200 bg-white p-4 text-sm dark:border-neutral-800 dark:bg-neutral-900">
+  <aside class="flex h-full w-72 flex-col overflow-y-auto border-l border-neutral-200 bg-white p-4 text-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
     <div class="flex items-center justify-between">
       <h3 class="font-semibold">阅读设置</h3>
       <button class="rounded-md px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800" @click="emit('close')">
@@ -78,7 +78,7 @@ const seg = (active: boolean) =>
           @click="setAccent(p.value)"
         />
       </div>
-      <label class="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+      <label class="mt-2 flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
         自定义
         <input type="color" :value="prefs.accent" class="h-6 w-10 cursor-pointer rounded border-0 bg-transparent p-0" @input="onCustomColor" />
       </label>
@@ -92,7 +92,7 @@ const seg = (active: boolean) =>
           :key="t.id"
           :data-theme-card="t.id"
           class="rounded-lg border px-2 py-1.5 text-left text-xs"
-          :class="prefs.readingTheme === t.id ? 'border-[var(--accent)] text-neutral-900 dark:text-neutral-100' : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 dark:border-neutral-700'"
+          :class="prefs.readingTheme === t.id ? 'border-[var(--accent)] text-neutral-900 dark:text-neutral-100' : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 dark:border-neutral-700 dark:text-neutral-400'"
           @click="pickTheme(t.id)"
         >
           {{ t.label }}
@@ -117,7 +117,7 @@ const seg = (active: boolean) =>
 
     <div :class="section">
       <p :class="label">字体</p>
-      <select :value="prefs.fontFamily" class="mt-1 w-full rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-700" @change="setFont">
+      <select :value="prefs.fontFamily" class="mt-1 w-full rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" @change="setFont">
         <option value="system">系统无衬线</option>
         <option value="serif">中文衬线</option>
       </select>

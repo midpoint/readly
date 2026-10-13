@@ -123,7 +123,7 @@ const tabCls = (active: boolean) =>
     <div v-if="tab === 'single'" class="mt-6 space-y-3">
       <p class="text-sm text-neutral-500">输入网站地址自动发现订阅源,或直接填写 feed 地址</p>
       <div class="flex gap-2">
-        <input v-model="singleUrl" placeholder="https://example.com 或 https://example.com/feed.xml" class="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" @keydown.enter="discover" />
+        <input v-model="singleUrl" placeholder="https://example.com 或 https://example.com/feed.xml" class="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" @keydown.enter="discover" />
         <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="discover">发现</button>
       </div>
       <div v-if="candidates.length" class="space-y-2 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
@@ -137,7 +137,7 @@ const tabCls = (active: boolean) =>
 
     <div v-else-if="tab === 'batch'" class="mt-6 space-y-3">
       <p class="text-sm text-neutral-500">每行一个 feed 地址(自动分批提交)</p>
-      <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900" placeholder="https://a.com/feed&#10;https://b.com/rss" />
+      <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" placeholder="https://a.com/feed&#10;https://b.com/rss" />
       <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
         批量订阅
       </button>
@@ -151,7 +151,7 @@ const tabCls = (active: boolean) =>
       <button class="rounded-lg border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-700" @click="doExport">导出全部订阅(OPML)</button>
     </div>
 
-    <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900">{{ message }}</div>
+    <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900 dark:text-neutral-100">{{ message }}</div>
     <ul v-if="failures.length" class="mt-2 space-y-1 text-xs text-red-600">
       <li v-for="f in failures" :key="f.url">{{ f.url }}:{{ f.error }}</li>
     </ul>

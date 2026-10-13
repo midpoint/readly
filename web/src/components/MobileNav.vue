@@ -14,7 +14,7 @@ const tabs: { key: "all" | "unread" | "starred" | "later"; label: string }[] = [
 
 function go(key: "all" | "unread" | "starred" | "later") {
   void router.replace({ path: "/", query: key === "all" ? {} : { view: key } });
-  void articles.setFilter(key, null, null);
+  void articles.setFilter(key, null, null).catch(() => undefined);
 }
 </script>
 

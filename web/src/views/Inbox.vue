@@ -89,9 +89,12 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "Escape") {
     closeArticle();
   } else if (reader.article) {
-    if (e.key === "s") void articles.setState(reader.article.id, { isStarred: !reader.article.isStarred });
-    if (e.key === "m") void articles.setState(reader.article.id, { isRead: !reader.article.isRead });
-    if (e.key === "v") void articles.setState(reader.article.id, { isLater: !reader.article.isLater });
+    if (e.key === "s")
+      void articles.setState(reader.article.id, { isStarred: !reader.article.isStarred }).catch(() => undefined);
+    if (e.key === "m")
+      void articles.setState(reader.article.id, { isRead: !reader.article.isRead }).catch(() => undefined);
+    if (e.key === "v")
+      void articles.setState(reader.article.id, { isLater: !reader.article.isLater }).catch(() => undefined);
   }
 }
 

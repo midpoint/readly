@@ -54,7 +54,7 @@ let observer: IntersectionObserver | null = null;
 
 onMounted(() => {
   observer = new IntersectionObserver((entries) => {
-    if (entries.some((e) => e.isIntersecting)) void articles.loadMore();
+    if (entries.some((e) => e.isIntersecting)) void articles.loadMore().catch(() => undefined);
   });
   const sentinel = document.getElementById("list-sentinel");
   if (sentinel) observer.observe(sentinel);
