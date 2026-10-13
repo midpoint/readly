@@ -35,6 +35,10 @@ app.onError((err, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(refreshDueFeeds(env.DB));
+    ctx.waitUntil(
+      refreshDueFeeds(env.DB).then((r) => {
+        console.log(`[readly] scheduled refresh: processed=${r.processed} remaining=${r.remaining} done=${r.done}`);
+      })
+    );
   },
 } satisfies ExportedHandler<Env>;

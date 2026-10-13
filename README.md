@@ -24,6 +24,14 @@ pnpm dev          # 前端 5173 + worker 8787
 
 未配置 `AUTH_TOKEN` 时本地不校验令牌。
 
+提示:`GET /__scheduled` 会被 SPA 静态资源回退吞掉(返回 index.html);本地触发定时任务请用:
+
+```bash
+curl -X POST "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"
+```
+
+注意:`pnpm dev` 未带 `--test-scheduled`,此时该端点仍返回 `200 ok` 但**不会真正执行**;需先以 `pnpm --filter @readly/worker exec wrangler dev --test-scheduled` 启动。执行结果见 worker 日志中的 `[readly] scheduled refresh:` 行。
+
 ## 部署到 Cloudflare
 
 ```bash
