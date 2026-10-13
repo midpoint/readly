@@ -8,6 +8,9 @@ import auth from "./routes/auth";
 import categories from "./routes/categories";
 import feeds from "./routes/feeds";
 import health from "./routes/health";
+import refreshRoutes from "./routes/refresh";
+import settingsRoutes from "./routes/settings";
+import stats from "./routes/stats";
 import { refreshDueFeeds } from "./lib/refresh";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -18,6 +21,9 @@ app.route("/api", auth);
 app.route("/api", categories);
 app.route("/api", feeds);
 app.route("/api", articles);
+app.route("/api", stats);
+app.route("/api", settingsRoutes);
+app.route("/api", refreshRoutes);
 
 app.notFound((c) => fail(c, 404, "not_found", "接口不存在"));
 app.onError((err, c) => {
