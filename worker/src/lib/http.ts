@@ -74,12 +74,25 @@ export async function fetchText(
       const location = res.headers.get("Location");
       if (!location) throw new Error("重定向缺少目标地址");
       if (hop === 5) throw new Error("重定向次数过多");
-      const next = new URL(location, current);
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        throw new Error("重定向目标地址无效");
+      }
       assertSafeUrl(next.toString());
       current = next.toString();
       continue;
     }
-    const { body, truncated } = await readCapped(res, maxBytes);
+    let body: string;
+    let truncated: boolean;
+    try {
+      ({ body, truncated } = await readCapped(res, maxBytes));
+    } catch (e) {
+      const name = (e as { name?: string } | null)?.name;
+      if (name === "TimeoutError" || name === "AbortError") throw new Error("抓取超时");
+      throw e;
+    }
     return { status: res.status, headers: res.headers, body, finalUrl: current, truncated };
   }
   throw new Error("重定向次数过多");

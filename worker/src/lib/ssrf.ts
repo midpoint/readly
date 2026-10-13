@@ -13,6 +13,12 @@ function stripBrackets(host: string): string {
   return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }
 
+function hexWordsToIpv4(hi: string, lo: string): string {
+  const a = parseInt(hi, 16);
+  const b = parseInt(lo, 16);
+  return `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`;
+}
+
 function isPrivateIpv6(host: string): boolean {
   const h = stripBrackets(host).toLowerCase();
   if (!h.includes(":")) return false;
@@ -25,18 +31,22 @@ function isPrivateIpv6(host: string): boolean {
   if (h.startsWith("::ffff:")) {
     const tail = h.slice(7);
     const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(tail);
-    if (hex) {
-      const hi = parseInt(hex[1]!, 16);
-      const lo = parseInt(hex[2]!, 16);
-      return isPrivateIpv4(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
-    }
+    if (hex) return isPrivateIpv4(hexWordsToIpv4(hex[1]!, hex[2]!));
     return isPrivateIpv4(tail);
+  }
+  // IPv4-compatible(::x.y):URL 解析器规范化为 ::<hex>:<hex>,直接调用时可能仍是点分形式
+  if (h.startsWith("::")) {
+    const rest = h.slice(2);
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(rest);
+    if (hex) return isPrivateIpv4(hexWordsToIpv4(hex[1]!, hex[2]!));
+    return isPrivateIpv4(rest);
   }
   return false;
 }
 
 export function isForbiddenHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
+  // 只去一个尾点:URL 保留域名尾点,localhost. 会被系统解析为 127.0.0.1
+  const host = hostname.toLowerCase().replace(/\.$/, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
   if (host.endsWith(".internal")) return true;
   return isPrivateIpv4(host) || isPrivateIpv6(host);

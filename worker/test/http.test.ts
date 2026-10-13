@@ -44,6 +44,25 @@ describe("fetchText", () => {
     expect(r.body.length).toBe(100);
   });
 
+  it("正文阶段超时也映射为抓取超时", async () => {
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      const stream = new ReadableStream({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("The operation aborted due to timeout", "TimeoutError"));
+          });
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    });
+    await expect(fetchText("https://example.com/slow-body", { timeoutMs: 20 }, fetchMock as unknown as typeof fetch)).rejects.toThrow(/超时/);
+  });
+
+  it("畸形 Location 报错", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(resp("", { status: 302, headers: { Location: "https://" } }));
+    await expect(fetchText("https://example.com/a", {}, fetchMock as unknown as typeof fetch)).rejects.toThrow(/重定向目标地址无效/);
+  });
+
   it("超时中止", async () => {
     const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
       return new Promise((_resolve, reject) => {
