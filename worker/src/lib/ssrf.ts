@@ -19,6 +19,17 @@ function isPrivateIpv6(host: string): boolean {
   if (h === "::1" || h === "::") return true;
   if (h.startsWith("fc") || h.startsWith("fd")) return true;
   if (/^fe[89ab]/.test(h)) return true;
+  // IPv4-mapped IPv6:URL 解析器把 ::ffff:127.0.0.1 规范化为 ::ffff:7f00:1 的十六进制形式
+  if (h.startsWith("::ffff:")) {
+    const tail = h.slice(7);
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(tail);
+    if (hex) {
+      const hi = parseInt(hex[1]!, 16);
+      const lo = parseInt(hex[2]!, 16);
+      return isPrivateIpv4(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+    }
+    return isPrivateIpv4(tail);
+  }
   return false;
 }
 
