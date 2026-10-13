@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Feed } from "@readly/shared";
 import { api } from "@/api/client";
 import { useFeedsStore } from "@/stores/feeds";
 
@@ -7,6 +8,24 @@ vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
   return { ...actual, api: vi.fn() };
 });
+
+const FEED: Feed = {
+  id: 3,
+  url: "https://a.example.com/rss",
+  siteUrl: null,
+  title: "旧标题",
+  description: null,
+  iconUrl: null,
+  categoryId: null,
+  sortOrder: 0,
+  lastFetchedAt: null,
+  errorCount: 0,
+  lastError: null,
+  unreadCount: 0,
+  createdAt: "2025-10-13T00:00:00.000Z",
+};
+
+const EMPTY_STATS = { unreadTotal: 0, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} };
 
 describe("feeds store", () => {
   beforeEach(() => {
@@ -58,5 +77,40 @@ describe("feeds store", () => {
     expect(calls[0]!.urls).toHaveLength(100);
     expect(calls[1]!.urls).toHaveLength(50);
     expect(r.created).toBe(150);
+  });
+
+  it("renameFeed 调 PATCH 并重载", async () => {
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/feeds/3" && opts?.method === "PATCH") return Promise.resolve(null);
+      if (path === "/api/categories") return Promise.resolve([]);
+      if (path === "/api/feeds") return Promise.resolve([{ ...FEED, title: "新标题" }]);
+      if (path === "/api/stats") return Promise.resolve(EMPTY_STATS);
+      return Promise.resolve([]);
+    });
+    const store = useFeedsStore();
+    await store.renameFeed(FEED.id, "新标题");
+    expect(api).toHaveBeenCalledWith("/api/feeds/3", { method: "PATCH", body: { title: "新标题" } });
+    // 重载:列表数据来自服务端(load 之后的 feeds 为新标题)
+    expect(store.feeds[0]?.title).toBe("新标题");
+    expect(vi.mocked(api).mock.calls.map(([p]) => p)).toEqual(
+      expect.arrayContaining(["/api/categories", "/api/feeds", "/api/stats"])
+    );
+  });
+
+  it("refreshAll 循环直至 done", async () => {
+    const responses = [
+      { done: false, processed: 2, remaining: 1 },
+      { done: true, processed: 1, remaining: 0 },
+    ];
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/refresh") {
+        return Promise.resolve(responses.shift() ?? { done: true, processed: 0, remaining: 0 });
+      }
+      return Promise.resolve([]);
+    });
+    const store = useFeedsStore();
+    const r = await store.refreshAll();
+    expect(r.processed).toBe(3);
+    expect(vi.mocked(api).mock.calls.filter(([p]) => p === "/api/refresh")).toHaveLength(2);
   });
 });

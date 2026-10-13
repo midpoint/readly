@@ -71,5 +71,21 @@ export const useFeedsStore = defineStore("feeds", () => {
     return res.updated;
   }
 
-  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead };
+  async function renameFeed(feedId: number, title: string): Promise<void> {
+    await api(`/api/feeds/${feedId}`, { method: "PATCH", body: { title } });
+    await load();
+  }
+
+  // 服务端分批刷新,循环调用直至 done;100 次上限兜底防死循环
+  async function refreshAll(): Promise<{ processed: number }> {
+    let processed = 0;
+    for (let i = 0; i < 100; i++) {
+      const r = await api<{ done: boolean; processed: number; remaining: number }>("/api/refresh", { method: "POST" });
+      processed += r.processed;
+      if (r.done) return { processed };
+    }
+    return { processed };
+  }
+
+  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, refreshAll };
 });
