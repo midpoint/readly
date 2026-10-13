@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { ComponentPublicInstance } from "vue";
 import { useRouter } from "vue-router";
 import type { Feed } from "@readly/shared";
+import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useSettingsStore } from "@/stores/settings";
@@ -10,6 +11,7 @@ import { useSettingsStore } from "@/stores/settings";
 const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
 const settings = useSettingsStore();
+const { openShortcutHelp } = useShortcutHelp();
 const router = useRouter();
 
 const stats = computed(() => feedsStore.stats);
@@ -332,6 +334,12 @@ async function confirmDelete(feed: Feed): Promise<void> {
     <div class="border-t border-neutral-200 p-3 dark:border-neutral-800">
       <button class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800" @click="router.push('/add')">
         导入 / 导出 OPML
+      </button>
+      <button
+        class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
+        @click="openShortcutHelp"
+      >
+        快捷键
       </button>
       <button
         class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-60 dark:hover:bg-neutral-800"
