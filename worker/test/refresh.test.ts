@@ -63,6 +63,9 @@ describe("refreshDueFeeds", () => {
     expect(r2.processed).toBe(1);
     expect(r2.done).toBe(true);
     expect(r2.remaining).toBe(0);
+    const errs = await env.DB.prepare("SELECT COUNT(*) c FROM feeds WHERE error_count > 0").first<{ c: number }>();
+    expect(errs!.c).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("失败源指数退避且记录错误", async () => {
@@ -85,5 +88,17 @@ describe("refreshDueFeeds", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(FEED_XML(1), { status: 200 }));
     const r = await refreshDueFeeds(env.DB, { fetchFn: fetchMock as unknown as typeof fetch });
     expect(r.processed).toBe(1);
+  });
+
+  it("settings 非法数值被钳制:batch=0 仍处理 1 个,interval=0 至少 1 分钟", async () => {
+    await putSetting(env.DB, "refresh_batch_size", 0);
+    await putSetting(env.DB, "refresh_interval", 0);
+    const id = await insertFeed("https://clamp.example.com/feed");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(FEED_XML(1), { status: 200 }));
+    const before = Date.now();
+    const r = await refreshDueFeeds(env.DB, { fetchFn: fetchMock as unknown as typeof fetch });
+    expect(r.processed).toBe(1);
+    const row = await env.DB.prepare("SELECT next_refresh_at FROM feeds WHERE id = ?").bind(id).first<{ next_refresh_at: string }>();
+    expect(new Date(row!.next_refresh_at).getTime()).toBeGreaterThanOrEqual(before + 60_000);
   });
 });

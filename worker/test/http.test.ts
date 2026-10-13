@@ -36,6 +36,20 @@ describe("fetchText", () => {
     await expect(fetchText("https://example.com/a", {}, fetchMock as unknown as typeof fetch)).rejects.toThrow(/重定向/);
   });
 
+  it("304 无 Location 直接返回不抛错", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 304 }));
+    const r = await fetchText("https://example.com/a", {}, fetchMock as unknown as typeof fetch);
+    expect(r.status).toBe(304);
+    expect(r.body).toBe("");
+  });
+
+  it("304 带 Location 也不跟随", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 304, headers: { Location: "/x" } }));
+    const r = await fetchText("https://example.com/a", {}, fetchMock as unknown as typeof fetch);
+    expect(r.status).toBe(304);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("超过 maxBytes 截断", async () => {
     const big = "x".repeat(1000);
     const fetchMock = vi.fn().mockResolvedValue(resp(big, { status: 200 }));

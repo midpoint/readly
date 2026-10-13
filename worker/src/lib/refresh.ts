@@ -89,8 +89,8 @@ export async function refreshDueFeeds(
 ): Promise<RefreshResult> {
   const now = opts.now ?? new Date();
   const nowIso = now.toISOString();
-  const limit = opts.limit ?? (await getSetting(db, SETTING_KEYS.refreshBatchSize, 2));
-  const intervalMin = await getSetting(db, SETTING_KEYS.refreshInterval, 30);
+  const limit = Math.min(50, Math.max(1, Math.trunc(opts.limit ?? (await getSetting(db, SETTING_KEYS.refreshBatchSize, 2)))));
+  const intervalMin = Math.max(1, await getSetting(db, SETTING_KEYS.refreshInterval, 30));
 
   const due = await db
     .prepare(
