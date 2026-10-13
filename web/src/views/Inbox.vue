@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import type { ArticleView } from "@readly/shared";
 import ArticleList from "@/components/ArticleList.vue";
+import MobileNav from "@/components/MobileNav.vue";
 import ReaderPane from "@/components/ReaderPane.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import { useArticlesStore } from "@/stores/articles";
@@ -97,13 +98,18 @@ async function selectArticle(id: number) {
 </script>
 
 <template>
-  <div class="flex h-full" tabindex="0" @keydown="onKey">
+  <div class="flex h-full flex-col md:flex-row" tabindex="0" @keydown="onKey">
     <Sidebar class="hidden md:flex" />
-    <div class="flex min-w-0 flex-1">
-      <div class="w-full shrink-0 overflow-hidden border-r border-neutral-200 md:w-[380px] dark:border-neutral-800">
+    <div class="flex min-h-0 min-w-0 flex-1">
+      <div
+        class="w-full shrink-0 overflow-hidden md:w-[380px] md:border-r md:border-neutral-200 dark:md:border-neutral-800"
+        :class="reader.article ? 'hidden md:block' : 'block'"
+      >
         <ArticleList />
       </div>
-      <ReaderPane class="hidden md:flex" />
+      <ReaderPane v-if="reader.article" />
+      <div v-else class="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">选择左侧文章开始阅读</div>
     </div>
+    <MobileNav v-if="!reader.article" />
   </div>
 </template>

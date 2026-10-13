@@ -35,12 +35,13 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
     <template v-else>
       <header class="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-4">
+          <button class="md:hidden rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700" @click="reader.close()">← 返回</button>
           <div class="min-w-0 text-xs text-neutral-500">
             <span>{{ reader.article.feedTitle }}</span>
             <span> · </span>
             <span>{{ new Date(reader.article.publishedAt).toLocaleString("zh-CN") }}</span>
           </div>
-          <div class="flex shrink-0 gap-1.5">
+          <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
             <button :class="btn" @click="toggle({ isStarred: !reader.article.isStarred })">
               {{ reader.article.isStarred ? "★ 已收藏" : "☆ 收藏" }}
             </button>
