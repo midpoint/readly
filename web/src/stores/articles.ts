@@ -21,8 +21,14 @@ export const useArticlesStore = defineStore("articles", () => {
 
   const current = computed(() => items.value.find((i) => i.id === currentId.value) ?? null);
 
+  // 加载中收到 reset(切换过滤条件)时不能丢弃,排队待当前请求结束后以最新条件补跑
+  let pendingReset = false;
+
   async function fetchPage(reset: boolean): Promise<void> {
-    if (loading.value) return;
+    if (loading.value) {
+      if (reset) pendingReset = true;
+      return;
+    }
     loading.value = true;
     try {
       const page = await api<ArticlesPage>("/api/articles", {
@@ -43,6 +49,10 @@ export const useArticlesStore = defineStore("articles", () => {
       hasMore.value = page.nextCursor !== null;
     } finally {
       loading.value = false;
+      if (pendingReset) {
+        pendingReset = false;
+        void fetchPage(true);
+      }
     }
   }
 
@@ -51,6 +61,7 @@ export const useArticlesStore = defineStore("articles", () => {
   }
 
   async function loadMore(): Promise<void> {
+    if (items.value.length === 0) return;
     if (!hasMore.value || loading.value) return;
     await fetchPage(false);
   }

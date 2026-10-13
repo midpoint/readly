@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { groupArticlesByDate } from "@/modules/date";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
 import ArticleListItem from "./ArticleListItem.vue";
 import DateGroupHeader from "./DateGroupHeader.vue";
 
+const route = useRoute();
+const router = useRouter();
 const articles = useArticlesStore();
 const reader = useReaderStore();
 
@@ -24,7 +27,13 @@ onMounted(() => {
 onUnmounted(() => observer?.disconnect());
 
 async function select(id: number) {
-  await reader.open(id);
+  try {
+    await reader.open(id);
+  } catch {
+    return;
+  }
+  // store → URL:点击打开也要同步 ?a=,与 Inbox 的键盘路径一致(相同则 no-op,不回环)
+  if (route.query.a !== String(id)) void router.replace({ query: { ...route.query, a: String(id) } });
   const item = articles.items.find((i) => i.id === id);
   if (item && !item.isRead) void articles.setState(id, { isRead: true });
 }

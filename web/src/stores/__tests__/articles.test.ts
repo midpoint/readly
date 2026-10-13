@@ -75,4 +75,30 @@ describe("articles store", () => {
     await store.setState(1, { isRead: true });
     expect(store.items).toHaveLength(0);
   });
+
+  it("空列表时 loadMore 不发请求", async () => {
+    const store = useArticlesStore();
+    await store.loadMore();
+    expect(api).not.toHaveBeenCalled();
+  });
+
+  it("加载中发出的 setFilter 会在当前请求完成后以新过滤重放", async () => {
+    let resolveFirst!: (page: { items: ArticleListItem[]; nextCursor: string | null }) => void;
+    const first = new Promise<{ items: ArticleListItem[]; nextCursor: string | null }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    vi.mocked(api).mockReturnValueOnce(first);
+    vi.mocked(api).mockResolvedValueOnce({ items: [item(9)], nextCursor: null });
+    const store = useArticlesStore();
+    const inFlight = store.setFilter("unread", null, null);
+    await store.setFilter("starred", null, null);
+    resolveFirst({ items: [item(5)], nextCursor: "c1" });
+    await inFlight;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api).toHaveBeenLastCalledWith(
+      "/api/articles",
+      expect.objectContaining({ query: expect.objectContaining({ view: "starred" }) })
+    );
+    expect(store.items.map((i) => i.id)).toEqual([9]);
+  });
 });
