@@ -52,7 +52,11 @@ async function markAllAsRead(): Promise<void> {
 
 async function toggleUnreadOnly(): Promise<void> {
   settings.updatePrefs({ unreadOnly: !settings.prefs.unreadOnly });
-  await articles.load(true);
+  try {
+    await articles.load(true);
+  } catch {
+    // 静默:偏好已生效,列表可下次刷新恢复
+  }
 }
 
 let observer: IntersectionObserver | null = null;

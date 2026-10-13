@@ -3,7 +3,9 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, nextTick, type App } from "vue";
 import { DEFAULT_READER_PREFS } from "@readly/shared";
+import { api } from "@/api/client";
 import ThemePanel from "@/components/ThemePanel.vue";
+import { useSettingsStore } from "@/stores/settings";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
@@ -81,5 +83,25 @@ describe("ThemePanel", () => {
     expect(document.documentElement.style.getPropertyValue("--reader-font-size")).toBe(
       `${DEFAULT_READER_PREFS.fontSize}px`
     );
+  });
+
+  it("勾选「列表与侧栏只显示未读」:写入偏好并以 unread=1 重载列表", async () => {
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/articles") return Promise.resolve({ items: [], nextCursor: null });
+      return Promise.resolve({});
+    });
+    await mountPanel();
+    const checkbox = [...host!.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find((c) =>
+      c.closest("label")?.textContent?.includes("列表与侧栏只显示未读")
+    )!;
+    expect(checkbox).toBeTruthy();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextTick();
+    expect(useSettingsStore().prefs.unreadOnly).toBe(true);
+    const last = vi.mocked(api).mock.calls.filter(([p]) => p === "/api/articles").at(-1);
+    expect(last).toBeTruthy();
+    expect((last![1]!.query as Record<string, unknown>).unread).toBe(1);
   });
 });

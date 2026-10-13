@@ -149,5 +149,7 @@ describe("articles store", () => {
     vi.mocked(api).mockResolvedValueOnce({ items: [item(2)], nextCursor: null });
     await store.loadMore();
     expect(vi.mocked(api)).toHaveBeenCalledTimes(2);
+    // 第二次分页请求同样携带 unread=1(mockResolvedValueOnce 会压制实现体内的断言,须显式覆盖)
+    expect((vi.mocked(api).mock.calls[1]?.[1]?.query as Record<string, unknown>).unread).toBe(1);
   });
 });
