@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Readly</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("readly_prefs");
+          var p = raw ? JSON.parse(raw) : {};
+          var mode = p.themeMode === "dark" || p.themeMode === "light" ? p.themeMode : "system";
+          var dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+          var themes = ["classic", "sepia", "paper", "night", "contrast"];
+          document.documentElement.dataset.readingTheme =
+            themes.indexOf(p.readingTheme) >= 0 ? p.readingTheme : "classic";
+          if (typeof p.accent === "string" && /^#[0-9a-fA-F]{6}$/.test(p.accent)) {
+            document.documentElement.style.setProperty("--accent", p.accent);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
