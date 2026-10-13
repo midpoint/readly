@@ -1,11 +1,13 @@
 /* 阅读主题:颜色只走变量,切换 html[data-reading-theme] 即整体换肤 */
 :root {
+  color-scheme: light;
   --reader-bg: #ffffff;
   --reader-text: #1f2328;
   --reader-link: var(--accent);
 }
 
 .dark {
+  color-scheme: dark;
   --reader-bg: #1a1a1a;
   --reader-text: #d4d4d4;
 }
