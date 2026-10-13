@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { exportOpml, parseOpml, type OpmlFeed } from "@/modules/opml";
 import { useFeedsStore } from "@/stores/feeds";
@@ -16,6 +16,10 @@ const busy = ref(false);
 const message = ref("");
 const failures = ref<{ url: string; error: string }[]>([]);
 
+onMounted(() => {
+  void store.load().catch(() => undefined);
+});
+
 async function discover() {
   if (!singleUrl.value.trim()) return;
   busy.value = true;
@@ -31,12 +35,13 @@ async function discover() {
 }
 
 async function subscribe(urls: string[]) {
-  if (urls.length === 0) return;
+  const clean = urls.map((u) => u.trim()).filter(Boolean);
+  if (clean.length === 0) return;
   busy.value = true;
   message.value = "";
   failures.value = [];
   try {
-    const r = await store.addFeeds(urls, categoryId.value);
+    const r = await store.addFeeds(clean, categoryId.value);
     message.value = `成功添加 ${r.created} 个源`;
     failures.value = r.failed;
     candidates.value = [];
