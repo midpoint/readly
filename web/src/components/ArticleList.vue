@@ -19,7 +19,6 @@ onMounted(() => {
   });
   const sentinel = document.getElementById("list-sentinel");
   if (sentinel) observer.observe(sentinel);
-  if (articles.items.length === 0) void articles.load(true);
 });
 
 onUnmounted(() => observer?.disconnect());

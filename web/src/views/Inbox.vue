@@ -16,11 +16,17 @@ const reader = useReaderStore();
 
 onMounted(async () => {
   await feedsStore.load();
-  const view = (typeof route.query.view === "string" ? route.query.view : "all") as ArticleView;
-  const feedId = typeof route.query.feed === "string" ? Number(route.query.feed) : null;
-  const categoryId = typeof route.query.category === "string" ? Number(route.query.category) : null;
+  const viewParam = typeof route.query.view === "string" ? route.query.view : "all";
+  const view: ArticleView = (["all", "unread", "starred", "later"] as const).includes(viewParam as ArticleView)
+    ? (viewParam as ArticleView)
+    : "all";
+  const numParam = (v: unknown): number | null =>
+    typeof v === "string" && Number.isInteger(Number(v)) ? Number(v) : null;
+  const feedId = numParam(route.query.feed);
+  const categoryId = numParam(route.query.category);
   await articles.setFilter(view, feedId, categoryId);
-  if (typeof route.query.a === "string") void reader.open(Number(route.query.a));
+  const articleId = numParam(route.query.a);
+  if (articleId !== null) void reader.open(articleId).catch(() => undefined);
 });
 
 function onKey(e: KeyboardEvent) {
@@ -42,7 +48,11 @@ function onKey(e: KeyboardEvent) {
 }
 
 async function selectArticle(id: number) {
-  await reader.open(id);
+  try {
+    await reader.open(id);
+  } catch {
+    return;
+  }
   const item = articles.items.find((i) => i.id === id);
   if (item && !item.isRead) void articles.setState(id, { isRead: true });
 }
