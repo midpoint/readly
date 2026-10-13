@@ -22,11 +22,14 @@ describe("isForbiddenHost", () => {
     "[::ffff:7f00:1]",
     "[::ffff:192.168.0.1]",
     "[::ffff:10.0.0.1]",
+    "[64:ff9b::7f00:1]",
+    "[64:ff9b::10.0.0.1]",
+    "[2002:7f00:1::]",
   ];
   for (const host of forbidden) {
     it(`拒绝 ${host}`, () => expect(isForbiddenHost(host)).toBe(true));
   }
-  const allowed = ["example.com", "8.8.8.8", "172.32.0.1", "192.169.0.1", "fe00::1", "[::ffff:8.8.8.8]"];
+  const allowed = ["example.com", "8.8.8.8", "172.32.0.1", "192.169.0.1", "fe00::1", "[::ffff:8.8.8.8]", "[2606:4700::1111]"];
   for (const host of allowed) {
     it(`允许 ${host}`, () => expect(isForbiddenHost(host)).toBe(false));
   }
