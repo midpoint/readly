@@ -1,0 +1,16 @@
+{
+  "name": "readly",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "concurrently -n worker,web -c blue,green \"pnpm --filter @readly/worker dev\" \"pnpm --filter @readly/web dev\"",
+    "build": "pnpm --filter @readly/web build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "deploy": "pnpm build && pnpm --filter @readly/worker deploy"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

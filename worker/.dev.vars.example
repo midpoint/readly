@@ -1,0 +1,2 @@
+# 复制为 .dev.vars 启用本地令牌校验(可选)
+AUTH_TOKEN=dev-token-change-me
