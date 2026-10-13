@@ -55,13 +55,13 @@ function setArticleParam(id: number | null): void {
 
 onMounted(async () => {
   await feedsStore.load();
-  await applyRouteQuery();
+  void applyRouteQuery().catch(() => undefined);
 });
 
 watch(
   () => route.fullPath,
   () => {
-    void applyRouteQuery();
+    void applyRouteQuery().catch(() => undefined);
   }
 );
 
