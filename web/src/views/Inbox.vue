@@ -10,12 +10,14 @@ import Sidebar from "@/components/Sidebar.vue";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useReaderStore } from "@/stores/reader";
+import { useSettingsStore } from "@/stores/settings";
 
 const route = useRoute();
 const router = useRouter();
 const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
 const reader = useReaderStore();
+const settings = useSettingsStore();
 
 function numParam(v: unknown): number | null {
   return typeof v === "string" && Number.isInteger(Number(v)) ? Number(v) : null;
@@ -87,9 +89,12 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "Escape") {
     closeArticle();
   } else if (reader.article) {
-    if (e.key === "s") void articles.setState(reader.article.id, { isStarred: !reader.article.isStarred });
-    if (e.key === "m") void articles.setState(reader.article.id, { isRead: !reader.article.isRead });
-    if (e.key === "v") void articles.setState(reader.article.id, { isLater: !reader.article.isLater });
+    if (e.key === "s")
+      void articles.setState(reader.article.id, { isStarred: !reader.article.isStarred }).catch(() => undefined);
+    if (e.key === "m")
+      void articles.setState(reader.article.id, { isRead: !reader.article.isRead }).catch(() => undefined);
+    if (e.key === "v")
+      void articles.setState(reader.article.id, { isLater: !reader.article.isLater }).catch(() => undefined);
   }
 }
 
@@ -101,12 +106,14 @@ async function selectArticle(id: number) {
   }
   setArticleParam(id);
   const item = articles.items.find((i) => i.id === id);
-  if (item && !item.isRead) void articles.setState(id, { isRead: true });
+  if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead) {
+    void articles.setState(id, { isRead: true }).catch(() => undefined);
+  }
 }
 </script>
 
 <template>
-  <div class="flex h-full flex-col md:flex-row" tabindex="0" @keydown="onKey">
+  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950" tabindex="0" @keydown="onKey">
     <Sidebar class="hidden md:flex" />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div

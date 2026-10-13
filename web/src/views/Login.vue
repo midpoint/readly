@@ -27,15 +27,15 @@ async function submit() {
   <div class="flex min-h-full items-center justify-center bg-neutral-50 p-6 dark:bg-neutral-950">
     <form class="w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900" @submit.prevent="submit">
       <h1 class="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Readly</h1>
-      <p class="mt-1 text-sm text-neutral-500">输入访问令牌以进入你的阅读器</p>
+      <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">输入访问令牌以进入你的阅读器</p>
       <input
         v-model="token"
         type="password"
         placeholder="访问令牌"
         autocomplete="current-password"
-        class="mt-6 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-[var(--accent)] dark:border-neutral-700 dark:bg-neutral-800"
+        class="mt-6 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-[var(--accent)] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
       />
-      <p v-if="error" class="mt-2 text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
       <button
         type="submit"
         :disabled="loading"

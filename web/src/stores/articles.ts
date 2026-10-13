@@ -2,11 +2,23 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type { ArticleListItem, ArticleView, ArticlesPage } from "@readly/shared";
 import { api } from "@/api/client";
+import { useFeedsStore } from "./feeds";
 
 interface StatePatch {
   isRead?: boolean;
   isStarred?: boolean;
   isLater?: boolean;
+}
+
+const STATS_REFRESH_DEBOUNCE_MS = 800;
+let statsTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleStatsRefresh(): void {
+  if (statsTimer) clearTimeout(statsTimer);
+  statsTimer = setTimeout(() => {
+    statsTimer = null;
+    void useFeedsStore().refreshStats().catch(() => undefined);
+  }, STATS_REFRESH_DEBOUNCE_MS);
 }
 
 export const useArticlesStore = defineStore("articles", () => {
@@ -92,6 +104,7 @@ export const useArticlesStore = defineStore("articles", () => {
       if (patch.isLater === false && view.value === "later") {
         items.value = items.value.filter((i) => i.id !== id);
       }
+      scheduleStatsRefresh();
     } catch (e) {
       items.value = before;
       throw e;

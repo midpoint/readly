@@ -1,0 +1,46 @@
+/* 阅读主题:颜色只走变量,切换 html[data-reading-theme] 即整体换肤 */
+:root {
+  color-scheme: light;
+  --reader-bg: #ffffff;
+  --reader-text: #1f2328;
+  --reader-link: var(--accent);
+}
+
+.dark {
+  color-scheme: dark;
+  --reader-bg: #1a1a1a;
+  --reader-text: #d4d4d4;
+}
+
+:root[data-reading-theme="classic"] {
+  --reader-bg: #ffffff;
+  --reader-text: #1f2328;
+}
+.dark[data-reading-theme="classic"] {
+  --reader-bg: #1a1a1a;
+  --reader-text: #d4d4d4;
+}
+
+:root[data-reading-theme="sepia"] {
+  --reader-bg: #f5f0e1;
+  --reader-text: #3b3529;
+  --reader-link: #8a6d1f;
+}
+
+:root[data-reading-theme="paper"] {
+  --reader-bg: #faf7f0;
+  --reader-text: #2b2b2b;
+  --reader-link: #7c5c2e;
+}
+
+:root[data-reading-theme="night"] {
+  --reader-bg: #121212;
+  --reader-text: #c8c8c8;
+  --reader-link: #7cb3ff;
+}
+
+:root[data-reading-theme="contrast"] {
+  --reader-bg: #ffffff;
+  --reader-text: #000000;
+  --reader-link: #0000ee;
+}

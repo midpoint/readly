@@ -110,50 +110,52 @@ const tabCls = (active: boolean) =>
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-6 py-8">
-    <button class="mb-6 text-sm text-neutral-500 hover:underline" @click="router.push('/')">← 返回阅读器</button>
-    <h1 class="text-xl font-semibold">添加订阅</h1>
+  <div class="min-h-full bg-white dark:bg-neutral-950 dark:text-neutral-100">
+    <div class="mx-auto max-w-2xl px-6 py-8">
+      <button class="mb-6 text-sm text-neutral-500 hover:underline" @click="router.push('/')">← 返回阅读器</button>
+      <h1 class="text-xl font-semibold">添加订阅</h1>
 
-    <div class="mt-4 flex gap-2">
-      <button :class="tabCls(tab === 'single')" @click="tab = 'single'">单个添加</button>
-      <button :class="tabCls(tab === 'batch')" @click="tab = 'batch'">批量添加</button>
-      <button :class="tabCls(tab === 'opml')" @click="tab = 'opml'">OPML 导入/导出</button>
-    </div>
-
-    <div v-if="tab === 'single'" class="mt-6 space-y-3">
-      <p class="text-sm text-neutral-500">输入网站地址自动发现订阅源,或直接填写 feed 地址</p>
-      <div class="flex gap-2">
-        <input v-model="singleUrl" placeholder="https://example.com 或 https://example.com/feed.xml" class="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" @keydown.enter="discover" />
-        <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="discover">发现</button>
+      <div class="mt-4 flex gap-2">
+        <button :class="tabCls(tab === 'single')" @click="tab = 'single'">单个添加</button>
+        <button :class="tabCls(tab === 'batch')" @click="tab = 'batch'">批量添加</button>
+        <button :class="tabCls(tab === 'opml')" @click="tab = 'opml'">OPML 导入/导出</button>
       </div>
-      <div v-if="candidates.length" class="space-y-2 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
-        <label v-for="c in candidates" :key="c.url" class="flex items-center justify-between gap-3 text-sm">
-          <span class="min-w-0 truncate">{{ c.title || c.url }}</span>
-          <button class="shrink-0 rounded-lg border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-700" @click="subscribe([c.url])">订阅</button>
+
+      <div v-if="tab === 'single'" class="mt-6 space-y-3">
+        <p class="text-sm text-neutral-500">输入网站地址自动发现订阅源,或直接填写 feed 地址</p>
+        <div class="flex gap-2">
+          <input v-model="singleUrl" placeholder="https://example.com 或 https://example.com/feed.xml" class="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" @keydown.enter="discover" />
+          <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="discover">发现</button>
+        </div>
+        <div v-if="candidates.length" class="space-y-2 rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
+          <label v-for="c in candidates" :key="c.url" class="flex items-center justify-between gap-3 text-sm">
+            <span class="min-w-0 truncate">{{ c.title || c.url }}</span>
+            <button class="shrink-0 rounded-lg border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-700" @click="subscribe([c.url])">订阅</button>
+          </label>
+        </div>
+        <button class="text-xs text-neutral-500 underline" @click="subscribe([singleUrl])">直接作为 feed 地址订阅</button>
+      </div>
+
+      <div v-else-if="tab === 'batch'" class="mt-6 space-y-3">
+        <p class="text-sm text-neutral-500">每行一个 feed 地址(自动分批提交)</p>
+        <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" placeholder="https://a.com/feed&#10;https://b.com/rss" />
+        <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
+          批量订阅
+        </button>
+      </div>
+
+      <div v-else class="mt-6 space-y-4">
+        <label class="block rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+          点击选择 OPML 文件导入
+          <input type="file" accept=".opml,.xml" class="hidden" @change="importOpml" />
         </label>
+        <button class="rounded-lg border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-700" @click="doExport">导出全部订阅(OPML)</button>
       </div>
-      <button class="text-xs text-neutral-500 underline" @click="subscribe([singleUrl])">直接作为 feed 地址订阅</button>
-    </div>
 
-    <div v-else-if="tab === 'batch'" class="mt-6 space-y-3">
-      <p class="text-sm text-neutral-500">每行一个 feed 地址(自动分批提交)</p>
-      <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900" placeholder="https://a.com/feed&#10;https://b.com/rss" />
-      <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
-        批量订阅
-      </button>
+      <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900 dark:text-neutral-100">{{ message }}</div>
+      <ul v-if="failures.length" class="mt-2 space-y-1 text-xs text-red-600 dark:text-red-400">
+        <li v-for="f in failures" :key="f.url">{{ f.url }}:{{ f.error }}</li>
+      </ul>
     </div>
-
-    <div v-else class="mt-6 space-y-4">
-      <label class="block rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
-        点击选择 OPML 文件导入
-        <input type="file" accept=".opml,.xml" class="hidden" @change="importOpml" />
-      </label>
-      <button class="rounded-lg border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-700" @click="doExport">导出全部订阅(OPML)</button>
-    </div>
-
-    <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900">{{ message }}</div>
-    <ul v-if="failures.length" class="mt-2 space-y-1 text-xs text-red-600">
-      <li v-for="f in failures" :key="f.url">{{ f.url }}:{{ f.error }}</li>
-    </ul>
   </div>
 </template>

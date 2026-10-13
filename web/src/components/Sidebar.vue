@@ -18,7 +18,7 @@ function select(view: "all" | "unread" | "starred" | "later", feedId: number | n
   if (feedId !== null) query.feed = String(feedId);
   if (categoryId !== null) query.category = String(categoryId);
   void router.replace({ path: "/", query });
-  void articles.setFilter(view, feedId, categoryId);
+  void articles.setFilter(view, feedId, categoryId).catch(() => undefined);
 }
 
 function feedsOf(categoryId: number | null) {
@@ -167,7 +167,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
 </script>
 
 <template>
-  <aside class="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+  <aside class="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200">
     <div class="flex items-center justify-between px-4 py-3">
       <h1 class="text-base font-semibold">Readly</h1>
       <button class="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white" @click="router.push('/add')">

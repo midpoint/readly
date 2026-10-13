@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "@/api/client";
 import { useArticlesStore } from "@/stores/articles";
 import type { ArticleListItem } from "@readly/shared";
@@ -32,6 +32,13 @@ describe("articles store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.mocked(api).mockReset();
+    // 统一伪定时器:setState 成功路径会挂 800ms stats 防抖定时器,
+    // 若不接管,残留定时器可能在后续用例中触发并消费 mockResolvedValueOnce 队列
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("load 重置列表并记录游标", async () => {
@@ -94,11 +101,34 @@ describe("articles store", () => {
     await store.setFilter("starred", null, null);
     resolveFirst({ items: [item(5)], nextCursor: "c1" });
     await inFlight;
-    await new Promise((r) => setTimeout(r, 0));
+    // 伪定时器下排空宏/微任务队列(等价原 setTimeout(r, 0) 的真实排空)
+    await vi.advanceTimersByTimeAsync(0);
     expect(api).toHaveBeenLastCalledWith(
       "/api/articles",
       expect.objectContaining({ query: expect.objectContaining({ view: "starred" }) })
     );
     expect(store.items.map((i) => i.id)).toEqual([9]);
+  });
+
+  it("setState 成功后防抖刷新 stats,连续变更只刷一次", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api).mockImplementation((path, opts) => {
+        if (path === "/api/articles" && !opts?.method) return Promise.resolve({ items: [item(1)], nextCursor: null });
+        if (path === "/api/articles/1") return Promise.resolve({ isRead: true, isStarred: false, isLater: false });
+        if (path === "/api/stats") return Promise.resolve({ unreadTotal: 0, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+        return Promise.resolve({});
+      });
+      const store = useArticlesStore();
+      await store.load(true);
+      const before = vi.mocked(api).mock.calls.filter(([p]) => p === "/api/stats").length;
+      await store.setState(1, { isRead: true });
+      await store.setState(1, { isStarred: true });
+      await vi.advanceTimersByTimeAsync(900);
+      const after = vi.mocked(api).mock.calls.filter(([p]) => p === "/api/stats").length;
+      expect(after - before).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
