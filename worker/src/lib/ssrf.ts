@@ -20,7 +20,7 @@ function isPrivateIpv6(host: string): boolean {
   if (h.startsWith("fc") || h.startsWith("fd")) return true;
   if (/^fe[89ab]/.test(h)) return true;
   // NAT64 知名前缀、6to4、Teredo:字面出现在用户 URL 中一律视为恶意
-  if (h.startsWith("64:ff9b:") || h.startsWith("2002:") || h.startsWith("2001:0:")) return true;
+  if (h.startsWith("64:ff9b:") || h.startsWith("2002:") || h.startsWith("2001:0:") || h.startsWith("2001::")) return true;
   // IPv4-mapped IPv6:URL 解析器把 ::ffff:127.0.0.1 规范化为 ::ffff:7f00:1 的十六进制形式
   if (h.startsWith("::ffff:")) {
     const tail = h.slice(7);
