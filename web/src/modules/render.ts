@@ -15,8 +15,18 @@ export function sanitizeArticleHtml(html: string): string {
   }
   for (const img of Array.from(root.querySelectorAll("img"))) {
     img.setAttribute("loading", "lazy");
-    if (!img.getAttribute("src") && img.getAttribute("data-src")) {
-      img.setAttribute("src", img.getAttribute("data-src")!);
+    const dataSrc = img.getAttribute("data-src");
+    if (dataSrc === null) continue;
+    // data-src 绕过 DOMPurify 的 URI 校验(ALLOW_DATA_ATTR 在 URI 正则前短路),
+    // 因此必须按 src 的同一套策略复验后才可提升;data: 在 img 上被 DOMPurify 放行
+    // (ADD_DATA_URI_TAGS),此处按需求额外排除。
+    const promotable =
+      DOMPurify.isValidAttribute("img", "src", dataSrc) &&
+      !/^\s*data:/i.test(dataSrc.replace(/[\t\n\r]/g, ""));
+    if (!promotable) {
+      img.removeAttribute("data-src");
+    } else if (!img.getAttribute("src")) {
+      img.setAttribute("src", dataSrc);
     }
   }
   return root.innerHTML;

@@ -17,4 +17,11 @@ describe("sanitizeArticleHtml", () => {
     expect(out).toContain('target="_blank"');
     expect(out).toContain('loading="lazy"');
   });
+
+  it("剥除 javascript:/data: 协议,data-src 提升不引入危险 src", () => {
+    expect(sanitizeArticleHtml(`<a href="javascript:alert(1)">x</a>`)).not.toContain("javascript:");
+    expect(sanitizeArticleHtml(`<img data-src="javascript:alert(1)">`)).not.toContain('src="javascript:');
+    expect(sanitizeArticleHtml(`<img data-src="data:text/html;base64,PHNjcmlwdD4=">`)).not.toMatch(/src="data:/);
+    expect(sanitizeArticleHtml(`<img data-src="https://ex.com/i.png">`)).toContain('src="https://ex.com/i.png"');
+  });
 });
