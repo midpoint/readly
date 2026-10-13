@@ -12,7 +12,19 @@ const reader = useReaderStore();
 const articles = useArticlesStore();
 const showThemePanel = ref(false);
 
-const html = computed(() => (reader.article?.content ? sanitizeArticleHtml(reader.article.content) : ""));
+const showOriginal = ref(false);
+const useFull = computed(() => Boolean(reader.article?.contentFull) && !showOriginal.value);
+const html = computed(() => {
+  const a = reader.article;
+  if (!a) return "";
+  return sanitizeArticleHtml(useFull.value && a.contentFull ? a.contentFull : (a.content ?? ""));
+});
+watch(
+  () => reader.article?.id,
+  () => {
+    showOriginal.value = false;
+  }
+);
 
 async function toggle(patch: { isRead?: boolean; isStarred?: boolean; isLater?: boolean }) {
   const a = reader.article;
@@ -75,15 +87,35 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             <button :class="btn" @click="toggle({ isRead: !reader.article.isRead })">
               {{ reader.article.isRead ? "标为未读" : "标为已读" }}
             </button>
+            <button
+              v-if="reader.article.url"
+              data-fetch-fulltext
+              :class="[btn, 'disabled:opacity-50']"
+              :disabled="reader.fullTextLoading"
+              @click="void reader.fetchFullText().catch(() => undefined)"
+            >
+              {{ reader.fullTextLoading ? "抓取中…" : reader.article.contentFull ? "重新抓取" : "抓取全文" }}
+            </button>
             <button :class="btn" @click="showThemePanel = !showThemePanel">Aa 主题</button>
             <a v-if="reader.article.url" :href="reader.article.url" target="_blank" rel="noopener noreferrer" :class="btn">原文</a>
           </div>
         </div>
         <h2 class="mt-2 text-xl font-semibold leading-snug dark:text-neutral-100">{{ reader.article.title }}</h2>
+        <p v-if="reader.fullTextError" class="mt-1 text-xs text-red-600 dark:text-red-400">抓取失败:{{ reader.fullTextError }}</p>
         <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
       </header>
       <div class="relative flex min-h-0 flex-1">
         <div class="min-h-0 flex-1 overflow-y-auto">
+          <div
+            v-if="reader.article.contentFull"
+            data-fulltext-source
+            class="mx-auto mt-3 flex w-full max-w-[var(--reader-width,720px)] items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400"
+          >
+            <span>全文来自原文页{{ reader.fullTextNote ? ` · ${reader.fullTextNote}` : "" }}</span>
+            <button data-toggle-original class="shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 hover:bg-neutral-200/60 dark:hover:bg-neutral-800" @click="showOriginal = !showOriginal">
+              {{ showOriginal ? "显示全文" : "显示摘要" }}
+            </button>
+          </div>
           <article class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>
