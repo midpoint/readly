@@ -5,7 +5,7 @@
 ## 功能
 
 1. RSS/Atom 订阅:OPML 导入导出、批量加源、站点自动发现、分类管理
-2. 阅读体验:深浅主题、强调色、多套阅读主题、字号/行距/宽度可调(计划 02)
+2. 阅读体验:亮/暗/跟随系统 + 12 色调色板与自定义强调色、5 套阅读主题(经典/护眼米黄/羊皮纸/夜间/高对比)、字号/行距/宽度/字体可调,偏好本地即时生效并同步云端
 3. 全文抓取:摘要过短时自动提取原文(浏览器端 Readability)(计划 03)
 4. TTS 朗读:浏览器内置语音逐句朗读(规划中)
 5. 阅读管理:未读/收藏/稍后读、按日期分组
@@ -32,6 +32,15 @@ curl -X POST "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"
 ```
 
 注意:`pnpm dev` 未带 `--test-scheduled`,此时该端点仍返回 `200 ok` 但**不会真正执行**;需先以 `pnpm --filter @readly/worker exec wrangler dev --test-scheduled` 启动。执行结果见 worker 日志中的 `[readly] scheduled refresh:` 行。
+
+## PWA
+
+生产构建产出可安装 PWA(manifest + Service Worker,应用壳离线可用):
+
+```bash
+pnpm --filter @readly/web icons        # 重新生成图标(改 logo.svg 后)
+pnpm --filter @readly/web verify:pwa   # 校验构建产物中的 manifest/SW/图标
+```
 
 ## 部署到 Cloudflare
 
