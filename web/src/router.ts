@@ -2,12 +2,14 @@ import { createRouter, createWebHistory } from "vue-router";
 import { getToken } from "@/api/client";
 import Login from "@/views/Login.vue";
 import Inbox from "@/views/Inbox.vue";
+import AddFeed from "@/views/AddFeed.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/login", name: "login", component: Login },
     { path: "/", name: "inbox", component: Inbox },
+    { path: "/add", name: "add", component: AddFeed },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

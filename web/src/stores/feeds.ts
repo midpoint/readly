@@ -34,6 +34,10 @@ export const useFeedsStore = defineStore("feeds", () => {
     return { created: res.created.length, failed: res.failed };
   }
 
+  async function discover(url: string): Promise<{ url: string; title: string; type: string }[]> {
+    return api("/api/feeds/discover", { method: "POST", body: { url } });
+  }
+
   async function createCategory(name: string): Promise<Category> {
     const cat = await api<Category>("/api/categories", { method: "POST", body: { name } });
     await load();
@@ -56,5 +60,5 @@ export const useFeedsStore = defineStore("feeds", () => {
     return res.updated;
   }
 
-  return { categories, feeds, stats, loading, load, addFeeds, createCategory, moveFeed, removeFeed, markAllRead };
+  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead };
 });
