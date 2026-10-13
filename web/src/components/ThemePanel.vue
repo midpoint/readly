@@ -51,7 +51,7 @@ const seg = (active: boolean) =>
   <aside class="flex h-full w-72 flex-col overflow-y-auto border-l border-neutral-200 bg-white p-4 text-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
     <div class="flex items-center justify-between">
       <h3 class="font-semibold">阅读设置</h3>
-      <button class="rounded-md px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800" @click="emit('close')">
+      <button class="rounded-md px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200/60 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="emit('close')">
         关闭
       </button>
     </div>
