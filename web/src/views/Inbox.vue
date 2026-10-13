@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import type { ArticleView } from "@readly/shared";
@@ -49,6 +49,16 @@ async function applyRouteQuery(): Promise<void> {
   }
 }
 
+// replace 被并发导航(如浏览器返回/popstate 处理中)打断时静默失败,下一拍重试一次,
+// 保证 URL 与已打开文章最终一致(后一个用户动作胜出)
+function replaceQuery(query: LocationQueryRaw): void {
+  void router.replace({ query }).catch(() => {
+    window.setTimeout(() => {
+      void router.replace({ query }).catch(() => undefined);
+    }, 0);
+  });
+}
+
 // store → URL:保留其余查询参数,仅增删 a;目标与当前一致时 no-op,避免多余导航
 function setArticleParam(id: number | null): void {
   const current = typeof route.query.a === "string" ? route.query.a : null;
@@ -59,12 +69,18 @@ function setArticleParam(id: number | null): void {
     query[k] = Array.isArray(v) ? v.filter((x): x is string => x !== null) : v;
   }
   if (id !== null) query.a = String(id);
-  void router.replace({ query });
+  replaceQuery(query);
 }
 
 onMounted(async () => {
+  // 文档级键盘监听:冷加载(未点击任意区域)即可用快捷键;输入框守卫在 onKey 内
+  document.addEventListener("keydown", onKey);
   await feedsStore.load();
   void applyRouteQuery().catch(() => undefined);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKey);
 });
 
 watch(
@@ -114,6 +130,8 @@ function onKey(e: KeyboardEvent) {
     closeShortcutHelp();
     return;
   }
+  // 浮层打开时屏蔽其余快捷键(防静默后台改动);? 与 Esc 已在上面处理
+  if (showShortcutHelp.value) return;
   if (e.key === "j") {
     void jumpUnread(1).catch(() => undefined);
   } else if (e.key === "k") {
@@ -145,7 +163,7 @@ async function selectArticle(id: number) {
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950" tabindex="0" @keydown="onKey">
+  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950">
     <Sidebar class="hidden md:flex" />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div

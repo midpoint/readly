@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { onUnmounted } from "vue";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
 
 const { showShortcutHelp, closeShortcutHelp } = useShortcutHelp();
+
+// 离开宿主视图(如切到 /add)时自动关浮层:返回后不再自动弹开、不会出现「Esc 无效需先点击」的连锁
+onUnmounted(closeShortcutHelp);
 
 const shortcuts: { keys: string; action: string }[] = [
   { keys: "j", action: "下一个未读文章" },

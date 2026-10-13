@@ -228,4 +228,60 @@ describe("快捷键浏览(j/k 跳未读 + ? 浮层)", () => {
     expect(useReaderStore().article).toBeNull();
     expect(router.currentRoute.value.query.a).toBeUndefined();
   });
+
+  it("浮层打开时按 j 不触发打开/已读(穿透屏蔽)", async () => {
+    mockShortcutFlow([item(1, true), item(2, false)]);
+    const { container } = await mountInbox("/");
+    const root = container.firstElementChild as HTMLElement;
+
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await flush();
+    expect(container.querySelector("[data-shortcut-help]")).not.toBeNull();
+
+    const callsBefore = vi.mocked(api).mock.calls.length;
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true }));
+    await flush();
+    expect(detailGets()).toHaveLength(0); // 未打开任何文章
+    expect(vi.mocked(api).mock.calls.length).toBe(callsBefore); // 连 PATCH 都没有
+    expect(useReaderStore().article).toBeNull();
+
+    // ? 仍可关闭浮层
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await flush();
+    expect(container.querySelector("[data-shortcut-help]")).toBeNull();
+  });
+
+  it("卸载后浮层开关复位(onUnmounted 关浮层)", async () => {
+    const { container } = await mountInbox("/");
+    const root = container.firstElementChild as HTMLElement;
+
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await flush();
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(true);
+
+    mounted!.app.unmount();
+    mounted!.container.remove();
+    mounted = null;
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
+  });
+
+  it("冷加载(document 级监听)未点击直接按 ?/j 生效", async () => {
+    mockShortcutFlow([item(1, true), item(2, false)]);
+    const { container } = await mountInbox("/");
+
+    // 不点击/不聚焦:keydown 派发到 body(冒泡到 document,即文档级监听)
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await flush();
+    expect(container.querySelector("[data-shortcut-help]")).not.toBeNull();
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    await flush();
+    expect(container.querySelector("[data-shortcut-help]")).toBeNull();
+
+    // 冷加载下 j 也生效:打开第一个未读 2
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+    await flush();
+    expect(detailGets()).toEqual(["/api/articles/2"]);
+    expect(useReaderStore().article?.id).toBe(2);
+  });
 });

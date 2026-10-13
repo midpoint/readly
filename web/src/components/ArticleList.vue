@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import type { LocationQueryRaw } from "vue-router";
 import { groupArticlesByDate } from "@/modules/date";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
@@ -71,6 +72,15 @@ onMounted(() => {
 
 onUnmounted(() => observer?.disconnect());
 
+// 与 Inbox.setArticleParam 同款:replace 被并发导航打断时下一拍重试一次
+function replaceQuery(query: LocationQueryRaw): void {
+  void router.replace({ query }).catch(() => {
+    window.setTimeout(() => {
+      void router.replace({ query }).catch(() => undefined);
+    }, 0);
+  });
+}
+
 async function select(id: number) {
   try {
     await reader.open(id);
@@ -78,7 +88,7 @@ async function select(id: number) {
     return;
   }
   // store → URL:点击打开也要同步 ?a=,与 Inbox 的键盘路径一致(相同则 no-op,不回环)
-  if (route.query.a !== String(id)) void router.replace({ query: { ...route.query, a: String(id) } });
+  if (route.query.a !== String(id)) replaceQuery({ ...route.query, a: String(id) });
   const item = articles.items.find((i) => i.id === id);
   if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead)
     void articles.setState(id, { isRead: true }).catch(() => undefined);
