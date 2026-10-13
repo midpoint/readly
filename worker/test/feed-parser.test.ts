@@ -70,6 +70,11 @@ const JSONFEED = JSON.stringify({
   ],
 });
 
+const RSS_NO_GUID = `<?xml version="1.0"?>
+<rss version="2.0"><channel><title>t</title>
+<item><title>文章A</title><link>https://example.com/stable-link</link></item>
+</channel></rss>`;
+
 describe("text 工具", () => {
   it("stripHtml 去标签并折叠空白", () => {
     expect(stripHtml("<p>你好&nbsp; 世界</p><br/><p>第二段</p>")).toBe("你好 世界 第二段");
@@ -145,5 +150,9 @@ describe("parseFeed", () => {
   });
   it("非 feed 内容抛错", () => {
     expect(() => parseFeed("<html><body>hi</body></html>")).toThrowError(/无法识别/);
+  });
+  it("缺失 guid 时回退到 link 派生,跨次解析稳定", () => {
+    const r = parseFeed(RSS_NO_GUID);
+    expect(r.items[0]!.guid).toBe(fnv1a("https://example.com/stable-link"));
   });
 });

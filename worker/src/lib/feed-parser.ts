@@ -71,7 +71,7 @@ function makeItem(parts: {
   const title = parts.title.trim() || "(无标题)";
   const publishedAt = parseDate(parts.published);
   const content = parts.rawContent ? sanitizeFeedHtml(parts.rawContent) : null;
-  const guid = parts.guid?.trim() || fnv1a(`${title}|${publishedAt}`);
+  const guid = parts.guid?.trim() || fnv1a(parts.url ?? title);
   return {
     guid,
     url: parts.url,
