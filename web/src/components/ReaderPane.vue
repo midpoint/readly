@@ -4,6 +4,8 @@ import { sanitizeArticleHtml } from "@/modules/render";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
 
+const emit = defineEmits<{ close: [] }>();
+
 const reader = useReaderStore();
 const articles = useArticlesStore();
 
@@ -35,7 +37,7 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
     <template v-else>
       <header class="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-4">
-          <button class="md:hidden rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700" @click="reader.close()">← 返回</button>
+          <button class="md:hidden rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700" @click="emit('close')">← 返回</button>
           <div class="min-w-0 text-xs text-neutral-500">
             <span>{{ reader.article.feedTitle }}</span>
             <span> · </span>

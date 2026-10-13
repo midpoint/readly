@@ -66,6 +66,12 @@ watch(
   }
 );
 
+// 关闭阅读面板:store 置空 + 清掉 URL 的 a(Esc 与移动端返回按钮共用同一路径)
+function closeArticle(): void {
+  reader.close();
+  setArticleParam(null);
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   const idx = articles.items.findIndex((i) => i.id === articles.currentId);
@@ -76,8 +82,7 @@ function onKey(e: KeyboardEvent) {
     const prev = articles.items[Math.max(idx - 1, 0)];
     if (prev) void selectArticle(prev.id);
   } else if (e.key === "Escape") {
-    reader.close();
-    setArticleParam(null);
+    closeArticle();
   } else if (reader.article) {
     if (e.key === "s") void articles.setState(reader.article.id, { isStarred: !reader.article.isStarred });
     if (e.key === "m") void articles.setState(reader.article.id, { isRead: !reader.article.isRead });
@@ -107,7 +112,7 @@ async function selectArticle(id: number) {
       >
         <ArticleList />
       </div>
-      <ReaderPane v-if="reader.article" />
+      <ReaderPane v-if="reader.article" @close="closeArticle" />
       <div v-else class="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">选择左侧文章开始阅读</div>
     </div>
     <MobileNav v-if="!reader.article" />
