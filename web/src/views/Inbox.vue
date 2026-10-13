@@ -10,12 +10,14 @@ import Sidebar from "@/components/Sidebar.vue";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useReaderStore } from "@/stores/reader";
+import { useSettingsStore } from "@/stores/settings";
 
 const route = useRoute();
 const router = useRouter();
 const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
 const reader = useReaderStore();
+const settings = useSettingsStore();
 
 function numParam(v: unknown): number | null {
   return typeof v === "string" && Number.isInteger(Number(v)) ? Number(v) : null;
@@ -101,7 +103,9 @@ async function selectArticle(id: number) {
   }
   setArticleParam(id);
   const item = articles.items.find((i) => i.id === id);
-  if (item && !item.isRead) void articles.setState(id, { isRead: true });
+  if (settings.prefs.autoMarkReadOnOpen && item && !item.isRead) {
+    void articles.setState(id, { isRead: true });
+  }
 }
 </script>
 

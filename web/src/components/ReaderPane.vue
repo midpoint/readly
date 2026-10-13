@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { sanitizeArticleHtml } from "@/modules/render";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
+import { useSettingsStore } from "@/stores/settings";
 import ThemePanel from "./ThemePanel.vue";
 
 const emit = defineEmits<{ close: [] }>();
@@ -29,6 +30,28 @@ async function toggle(patch: { isRead?: boolean; isStarred?: boolean; isLater?: 
 }
 
 const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
+
+const settings = useSettingsStore();
+const bottomSentinel = ref<HTMLElement | null>(null);
+let scrollObserver: IntersectionObserver | null = null;
+
+function setupScrollObserver(): void {
+  scrollObserver?.disconnect();
+  scrollObserver = null;
+  if (!bottomSentinel.value || typeof IntersectionObserver === "undefined") return;
+  scrollObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    const a = reader.article;
+    if (!a || a.isRead) return;
+    if (!settings.prefs.autoMarkReadOnScroll) return;
+    void toggle({ isRead: true });
+  });
+  scrollObserver.observe(bottomSentinel.value);
+}
+
+onMounted(setupScrollObserver);
+onUnmounted(() => scrollObserver?.disconnect());
+watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
 </script>
 
 <template>
@@ -61,6 +84,7 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
       </header>
       <div class="relative flex min-h-0 flex-1">
         <article class="reader-body mx-auto w-full overflow-y-auto px-6 py-6" v-html="html" />
+        <div ref="bottomSentinel" class="h-px shrink-0" />
         <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
         <ThemePanel v-if="showThemePanel" class="absolute inset-y-0 right-0 z-30 shadow-xl" @close="showThemePanel = false" />
       </div>
