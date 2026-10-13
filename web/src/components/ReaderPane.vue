@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { sanitizeArticleHtml } from "@/modules/render";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
+import ThemePanel from "./ThemePanel.vue";
 
 const emit = defineEmits<{ close: [] }>();
 
 const reader = useReaderStore();
 const articles = useArticlesStore();
+const showThemePanel = ref(false);
 
 const html = computed(() => (reader.article?.content ? sanitizeArticleHtml(reader.article.content) : ""));
 
@@ -50,14 +52,18 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
             <button :class="btn" @click="toggle({ isRead: !reader.article.isRead })">
               {{ reader.article.isRead ? "标为未读" : "标为已读" }}
             </button>
+            <button :class="btn" @click="showThemePanel = !showThemePanel">Aa 主题</button>
             <a v-if="reader.article.url" :href="reader.article.url" target="_blank" rel="noopener noreferrer" :class="btn">原文</a>
           </div>
         </div>
         <h2 class="mt-2 text-xl font-semibold leading-snug">{{ reader.article.title }}</h2>
         <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
       </header>
-      <article class="reader-body mx-auto w-full overflow-y-auto px-6 py-6" v-html="html" />
-      <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
+      <div class="relative flex min-h-0 flex-1">
+        <article class="reader-body mx-auto w-full overflow-y-auto px-6 py-6" v-html="html" />
+        <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
+        <ThemePanel v-if="showThemePanel" class="absolute inset-y-0 right-0 z-30 shadow-xl" @close="showThemePanel = false" />
+      </div>
     </template>
   </section>
 </template>
@@ -67,6 +73,10 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
   max-width: var(--reader-width, 720px);
   font-size: var(--reader-font-size, 17px);
   line-height: var(--reader-line-height, 1.7);
+  font-family: var(--reader-font-family, inherit);
+  background: var(--reader-bg, transparent);
+  color: var(--reader-text, inherit);
+  border-radius: 12px;
 }
 .reader-body :deep(img) {
   max-width: 100%;
@@ -74,6 +84,6 @@ const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-n
   border-radius: 8px;
 }
 .reader-body :deep(a) {
-  color: var(--accent);
+  color: var(--reader-link, var(--accent));
 }
 </style>
