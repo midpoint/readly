@@ -63,9 +63,12 @@ beforeEach(() => {
   localStorage.clear();
   host = document.createElement("div");
   document.body.appendChild(host);
+  // 伪定时器:setState 成功会挂 800ms stats 防抖定时器,真实定时器下会残留到用例/环境拆除之后
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   app?.unmount();
   host?.remove();
   app = null;
@@ -76,7 +79,7 @@ afterEach(() => {
 
 // 宏任务排空点击后的异步链(reader.open → route.replace → setState PATCH),再补一次 DOM 更新
 async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await vi.advanceTimersByTimeAsync(0);
   await nextTick();
 }
 

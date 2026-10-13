@@ -87,5 +87,10 @@ export const useFeedsStore = defineStore("feeds", () => {
     return { processed };
   }
 
-  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, refreshAll };
+  // 轻量刷新:仅更新侧栏计数,不重拉分类/订阅(阅读标已读后调用)
+  async function refreshStats(): Promise<void> {
+    stats.value = await api<Stats>("/api/stats");
+  }
+
+  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, refreshAll, refreshStats };
 });
