@@ -16,6 +16,9 @@ function outlineTitle(el: Element): string {
 export function parseOpml(xml: string): OpmlResult {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("OPML 解析失败:XML 格式错误");
+  if (doc.documentElement?.nodeName.toLowerCase() !== "opml") {
+    throw new Error("OPML 解析失败:根节点不是 opml");
+  }
   const body = doc.querySelector("body");
   if (!body) throw new Error("OPML 解析失败:缺少 body 节点");
 

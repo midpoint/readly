@@ -39,6 +39,14 @@ describe("parseOpml", () => {
   it("非 OPML 抛错", () => {
     expect(() => parseOpml("<html></html>")).toThrow(/OPML/);
   });
+
+  it("坏 XML 抛错", () => {
+    expect(() => parseOpml("<opml><body><outline></body></opml>")).toThrow(/OPML/);
+  });
+
+  it("根节点不是 opml 抛错(即使含 body)", () => {
+    expect(() => parseOpml("<x><body><outline text=\"a\"/></body></x>")).toThrow(/OPML/);
+  });
 });
 
 describe("exportOpml", () => {
@@ -54,6 +62,13 @@ describe("exportOpml", () => {
     expect(parsed.categories.map((c) => c.name)).toEqual(["科技", "设计"]);
     expect(parsed.categories[0]!.feeds[0]!.title).toBe("少数派 & 朋友");
     expect(parsed.uncategorized).toHaveLength(0);
+    expect(parsed).toEqual({
+      categories: [
+        { name: "科技", feeds: [{ url: "https://sspai.com/feed", title: "少数派 & 朋友", siteUrl: "https://sspai.com" }] },
+        { name: "设计", feeds: [{ url: "https://d.example.com/rss", title: "Design", siteUrl: null }] },
+      ],
+      uncategorized: [],
+    });
   });
 });
 
