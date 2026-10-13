@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
+import type { Context } from "hono";
 import { describe, expect, it } from "vitest";
-import { timingSafeEqualStr } from "../src/auth";
+import { authMiddleware, timingSafeEqualStr } from "../src/auth";
 
 describe("timingSafeEqualStr", () => {
   it("相等返回 true", () => {
@@ -33,5 +34,32 @@ describe("auth middleware", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
+  });
+});
+
+describe("authMiddleware AUTH_TOKEN 未配置", () => {
+  it("AUTH_TOKEN 未配置时放行", async () => {
+    let called = false;
+    const c = { env: {}, req: { header: () => undefined } } as unknown as Context;
+    await authMiddleware(c as never, async () => {
+      called = true;
+    });
+    expect(called).toBe(true);
+  });
+});
+
+describe("GET /api/auth/check", () => {
+  it("无令牌返回 401", async () => {
+    const res = await SELF.fetch("http://example.com/api/auth/check");
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("unauthorized");
+  });
+  it("正确令牌返回 200 且 body 为 {ok:true}", async () => {
+    const res = await SELF.fetch("http://example.com/api/auth/check", {
+      headers: { Authorization: "Bearer test-token" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });
