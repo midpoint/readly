@@ -56,6 +56,7 @@ describe("fetchText", () => {
     const r = await fetchText("https://example.com/a", { maxBytes: 100 }, fetchMock as unknown as typeof fetch);
     expect(r.truncated).toBe(true);
     expect(r.body.length).toBe(100);
+    expect(r.buffer.byteLength).toBe(100);
   });
 
   it("正文阶段超时也映射为抓取超时", async () => {
