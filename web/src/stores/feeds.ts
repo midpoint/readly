@@ -26,12 +26,19 @@ export const useFeedsStore = defineStore("feeds", () => {
   }
 
   async function addFeeds(urls: string[], categoryId: number | null): Promise<{ created: number; failed: { url: string; error: string }[] }> {
-    const res = await api<{ created: { id: number }[]; failed: { url: string; error: string }[] }>("/api/feeds", {
-      method: "POST",
-      body: { urls, categoryId },
-    });
+    const createdAll: { id: number }[] = [];
+    const failedAll: { url: string; error: string }[] = [];
+    for (let i = 0; i < urls.length; i += 100) {
+      const slice = urls.slice(i, i + 100);
+      const res = await api<{ created: { id: number }[]; failed: { url: string; error: string }[] }>("/api/feeds", {
+        method: "POST",
+        body: { urls: slice, categoryId },
+      });
+      createdAll.push(...res.created);
+      failedAll.push(...res.failed);
+    }
     await load();
-    return { created: res.created.length, failed: res.failed };
+    return { created: createdAll.length, failed: failedAll };
   }
 
   async function discover(url: string): Promise<{ url: string; title: string; type: string }[]> {

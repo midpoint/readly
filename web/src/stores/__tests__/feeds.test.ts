@@ -35,5 +35,28 @@ describe("feeds store", () => {
     const store = useFeedsStore();
     const out = await store.discover("https://a.example.com/");
     expect(out[0]!.url).toBe("https://a.example.com/feed");
+    expect(api).toHaveBeenCalledWith("/api/feeds/discover", { method: "POST", body: { url: "https://a.example.com/" } });
+  });
+
+  it("addFeeds 超过 100 个自动分片", async () => {
+    const calls: { urls: string[] }[] = [];
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/feeds" && opts?.method === "POST") {
+        const body = opts.body as { urls: string[] };
+        calls.push(body);
+        return Promise.resolve({ created: body.urls.map((_, i) => ({ id: i })), failed: [] });
+      }
+      if (path === "/api/categories") return Promise.resolve([]);
+      if (path === "/api/feeds") return Promise.resolve([]);
+      if (path === "/api/stats") return Promise.resolve({ unreadTotal: 0, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+      return Promise.resolve([]);
+    });
+    const store = useFeedsStore();
+    const urls = Array.from({ length: 150 }, (_, i) => `https://f${i}.example.com/rss`);
+    const r = await store.addFeeds(urls, null);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.urls).toHaveLength(100);
+    expect(calls[1]!.urls).toHaveLength(50);
+    expect(r.created).toBe(150);
   });
 });

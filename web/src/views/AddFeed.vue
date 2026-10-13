@@ -17,7 +17,9 @@ const message = ref("");
 const failures = ref<{ url: string; error: string }[]>([]);
 
 onMounted(() => {
-  void store.load().catch(() => undefined);
+  void store.load().catch(() => {
+    message.value = "订阅列表加载失败,导出可能不完整";
+  });
 });
 
 async function discover() {
