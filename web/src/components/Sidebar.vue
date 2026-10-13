@@ -40,6 +40,20 @@ const visibleCategories = computed(() =>
 const navItem = "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-sm text-left hover:bg-neutral-200/60 dark:hover:bg-neutral-800";
 const menuItem = "block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800";
 
+const catNavItem =
+  "flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm font-medium text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800";
+
+function isCollapsed(categoryId: number): boolean {
+  return settings.prefs.collapsedCategoryIds.includes(categoryId);
+}
+
+function toggleCollapse(categoryId: number): void {
+  const ids = settings.prefs.collapsedCategoryIds;
+  settings.updatePrefs({
+    collapsedCategoryIds: ids.includes(categoryId) ? ids.filter((id) => id !== categoryId) : [...ids, categoryId],
+  });
+}
+
 // —— 刷新订阅 ——
 type RefreshStatus = "idle" | "busy" | "done" | "error";
 const refreshStatus = ref<RefreshStatus>("idle");
@@ -205,10 +219,22 @@ async function confirmDelete(feed: Feed): Promise<void> {
     </nav>
     <div class="mt-4 flex-1 overflow-y-auto px-2 pb-4">
       <template v-for="cat in visibleCategories" :key="cat.id">
-        <button :class="[navItem, 'mt-2 font-medium text-neutral-500']" @click="select('all', null, cat.id)">
-          <span class="truncate">{{ cat.name }}</span>
-          <span v-if="stats?.perCategory[cat.id]" class="text-xs">{{ stats.perCategory[cat.id] }}</span>
-        </button>
+        <div class="mt-2 flex items-center">
+          <button
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-neutral-500 hover:bg-neutral-200/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            :aria-label="isCollapsed(cat.id) ? '展开分类' : '折叠分类'"
+            :aria-expanded="!isCollapsed(cat.id)"
+            :data-collapse="cat.id"
+            @click="toggleCollapse(cat.id)"
+          >
+            {{ isCollapsed(cat.id) ? "▸" : "▾" }}
+          </button>
+          <button :class="catNavItem" @click="select('all', null, cat.id)">
+            <span class="truncate">{{ cat.name }}</span>
+            <span v-if="stats?.perCategory[cat.id]" class="text-xs">{{ stats.perCategory[cat.id] }}</span>
+          </button>
+        </div>
+        <template v-if="!isCollapsed(cat.id)">
         <div v-for="feed in visibleFeeds(cat.id)" :key="feed.id" class="group relative flex items-center">
           <input
             v-if="renamingId === feed.id"
@@ -251,6 +277,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
             </template>
           </div>
         </div>
+        </template>
       </template>
       <button
         v-if="!settings.prefs.unreadOnly || visibleFeeds(null).length > 0"

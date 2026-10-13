@@ -44,6 +44,12 @@ describe("sanitizePrefs", () => {
     expect(p.fontFamily).toBe("system");
     expect(p.autoMarkReadOnOpen).toBe(true);
     expect(p.unreadOnly).toBe(false);
+    expect(p.collapsedCategoryIds).toEqual([]);
+  });
+  it("collapsedCategoryIds 去重、过滤非整数、缺省为空", () => {
+    expect(sanitizePrefs({ collapsedCategoryIds: [3, 3, 7, "x", 2.5, null] }).collapsedCategoryIds).toEqual([3, 7]);
+    expect(sanitizePrefs({}).collapsedCategoryIds).toEqual([]);
+    expect(sanitizePrefs({ collapsedCategoryIds: "junk" }).collapsedCategoryIds).toEqual([]);
   });
   it("非对象输入返回完整默认值", () => {
     expect(sanitizePrefs("junk")).toEqual(DEFAULT_READER_PREFS);

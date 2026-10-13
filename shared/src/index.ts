@@ -150,6 +150,7 @@ export interface ReaderPrefs {
   autoMarkReadOnOpen: boolean;
   autoMarkReadOnScroll: boolean;
   unreadOnly: boolean;
+  collapsedCategoryIds: number[];
 }
 
 export const DEFAULT_READER_PREFS: ReaderPrefs = {
@@ -163,6 +164,7 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   autoMarkReadOnOpen: true,
   autoMarkReadOnScroll: true,
   unreadOnly: false,
+  collapsedCategoryIds: [],
 };
 
 export const SETTING_KEYS = {
