@@ -145,6 +145,13 @@ describe("autoMarkReadOnScroll", () => {
     await reader.open(2);
     await nextTick();
 
+    // 结构性守卫:哨兵必须在滚动容器内且位于内容末尾(移出去则不随滚动、恒可见即触发)
+    const sentinel = host!.querySelector(".h-px");
+    expect(sentinel).not.toBeNull();
+    const scroller = sentinel!.closest(".overflow-y-auto");
+    expect(scroller).not.toBeNull();
+    expect(scroller!.lastElementChild).toBe(sentinel);
+
     settings.updatePrefs({ autoMarkReadOnScroll: false });
     const io = FakeIO.instances.at(-1)!;
     io.callback([{ isIntersecting: true } as IntersectionObserverEntry], io as unknown as IntersectionObserver);

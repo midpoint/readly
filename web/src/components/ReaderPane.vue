@@ -83,8 +83,10 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
         <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
       </header>
       <div class="relative flex min-h-0 flex-1">
-        <article class="reader-body mx-auto w-full overflow-y-auto px-6 py-6" v-html="html" />
-        <div ref="bottomSentinel" class="h-px shrink-0" />
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <article class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
+          <div ref="bottomSentinel" class="h-px" />
+        </div>
         <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
         <ThemePanel v-if="showThemePanel" class="absolute inset-y-0 right-0 z-30 shadow-xl" @close="showThemePanel = false" />
       </div>
