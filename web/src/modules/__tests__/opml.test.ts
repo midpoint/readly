@@ -56,3 +56,19 @@ describe("exportOpml", () => {
     expect(parsed.uncategorized).toHaveLength(0);
   });
 });
+
+describe("parseOpml 深层嵌套", () => {
+  it("深层嵌套(3 层)的源归入顶层分类,不丢失", () => {
+    const nested = `<opml version="2.0"><body>
+      <outline text="科技">
+        <outline text="AI">
+          <outline type="rss" xmlUrl="https://deep.example.com/feed" text="深层源"/>
+        </outline>
+      </outline>
+    </body></opml>`;
+    const r = parseOpml(nested);
+    expect(r.categories).toHaveLength(1);
+    expect(r.categories[0]!.name).toBe("科技");
+    expect(r.categories[0]!.feeds.map((f) => f.url)).toEqual(["https://deep.example.com/feed"]);
+  });
+});

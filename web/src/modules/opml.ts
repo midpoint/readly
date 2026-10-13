@@ -32,6 +32,18 @@ export function parseOpml(xml: string): OpmlResult {
     return { url: key, title: outlineTitle(el).trim() || key, siteUrl: el.getAttribute("htmlUrl") };
   }
 
+  function collectFeeds(el: Element, into: OpmlFeed[]): void {
+    for (const child of Array.from(el.children)) {
+      if (child.tagName.toLowerCase() !== "outline") continue;
+      if (child.getAttribute("xmlUrl")) {
+        const feed = toFeed(child);
+        if (feed) into.push(feed);
+      } else {
+        collectFeeds(child, into);
+      }
+    }
+  }
+
   for (const top of Array.from(body.children)) {
     if (top.tagName.toLowerCase() !== "outline") continue;
     if (top.getAttribute("xmlUrl")) {
@@ -40,11 +52,7 @@ export function parseOpml(xml: string): OpmlResult {
       continue;
     }
     const feeds: OpmlFeed[] = [];
-    for (const child of Array.from(top.children)) {
-      if (child.tagName.toLowerCase() !== "outline") continue;
-      const feed = toFeed(child);
-      if (feed) feeds.push(feed);
-    }
+    collectFeeds(top, feeds);
     if (feeds.length > 0) categories.push({ name: outlineTitle(top).trim() || "未命名分类", feeds });
   }
 
