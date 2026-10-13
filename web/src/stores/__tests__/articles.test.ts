@@ -131,4 +131,23 @@ describe("articles store", () => {
       vi.useRealTimers();
     }
   });
+
+  it("unreadOnly 开启时列表与分页请求携带 unread=1", async () => {
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/articles") {
+        const q = opts?.query as Record<string, unknown>;
+        expect(q.unread).toBe(1);
+        return Promise.resolve({ items: [item(1)], nextCursor: "c1" });
+      }
+      return Promise.resolve({});
+    });
+    const { useSettingsStore } = await import("@/stores/settings");
+    useSettingsStore().initLocal();
+    useSettingsStore().updatePrefs({ unreadOnly: true });
+    const store = useArticlesStore();
+    await store.load(true);
+    vi.mocked(api).mockResolvedValueOnce({ items: [item(2)], nextCursor: null });
+    await store.loadMore();
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(2);
+  });
 });

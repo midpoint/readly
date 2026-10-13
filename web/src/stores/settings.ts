@@ -31,6 +31,7 @@ export function sanitizePrefs(raw: unknown): ReaderPrefs {
     fontFamily: o.fontFamily === "serif" ? "serif" : "system",
     autoMarkReadOnOpen: o.autoMarkReadOnOpen !== false,
     autoMarkReadOnScroll: o.autoMarkReadOnScroll !== false,
+    unreadOnly: o.unreadOnly === true,
   };
 }
 

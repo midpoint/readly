@@ -43,17 +43,19 @@ describe("sanitizePrefs", () => {
     expect(p.contentWidth).toBe(560);
     expect(p.fontFamily).toBe("system");
     expect(p.autoMarkReadOnOpen).toBe(true);
+    expect(p.unreadOnly).toBe(false);
   });
   it("非对象输入返回完整默认值", () => {
     expect(sanitizePrefs("junk")).toEqual(DEFAULT_READER_PREFS);
     expect(sanitizePrefs(null)).toEqual(DEFAULT_READER_PREFS);
   });
   it("保留合法自定义值", () => {
-    const p = sanitizePrefs({ accent: "#22c55e", readingTheme: "night", fontSize: 19, autoMarkReadOnScroll: false });
+    const p = sanitizePrefs({ accent: "#22c55e", readingTheme: "night", fontSize: 19, autoMarkReadOnScroll: false, unreadOnly: true });
     expect(p.accent).toBe("#22c55e");
     expect(p.readingTheme).toBe("night");
     expect(p.fontSize).toBe(19);
     expect(p.autoMarkReadOnScroll).toBe(false);
+    expect(p.unreadOnly).toBe(true);
   });
 });
 

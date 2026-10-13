@@ -6,6 +6,7 @@ import type { Feed } from "@readly/shared";
 import { api } from "@/api/client";
 import Sidebar from "@/components/Sidebar.vue";
 import { useFeedsStore } from "@/stores/feeds";
+import { useSettingsStore } from "@/stores/settings";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
@@ -228,5 +229,37 @@ describe("Sidebar 源入口", () => {
     // 每次键入触发重渲染,若 ref 回调重复 select() 会全选(selectionStart=0)
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(input.value.length);
+  });
+
+  it("unreadOnly 开启时侧栏隐藏零未读源,关闭后恢复", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/categories") return Promise.resolve([{ id: 1, name: "科技", sortOrder: 0, createdAt: "2025-10-13T00:00:00.000Z" }]);
+      if (path === "/api/feeds")
+        return Promise.resolve([
+          { ...FEED, id: 1, url: "https://a.example.com/rss", title: "有未读", categoryId: 1, unreadCount: 2 },
+          { ...FEED, id: 2, url: "https://b.example.com/rss", title: "零未读", categoryId: 1, unreadCount: 0 },
+        ]);
+      if (path === "/api/stats")
+        return Promise.resolve({ unreadTotal: 2, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+      if (path === "/api/articles") return Promise.resolve({ items: [], nextCursor: null });
+      return Promise.resolve(null);
+    });
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    expect(container.textContent).toContain("有未读");
+    expect(container.textContent).toContain("零未读");
+    useSettingsStore().updatePrefs({ unreadOnly: true });
+    await nextTick();
+    await nextTick();
+    expect(container.textContent).toContain("有未读");
+    expect(container.textContent).not.toContain("零未读");
+    useSettingsStore().updatePrefs({ unreadOnly: false });
+    await nextTick();
+    await nextTick();
+    expect(container.textContent).toContain("零未读");
   });
 });

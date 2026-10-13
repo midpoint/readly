@@ -134,6 +134,10 @@ const seg = (active: boolean) =>
         <input type="checkbox" :checked="prefs.autoMarkReadOnScroll" class="accent-[var(--accent)]" @change="settings.updatePrefs({ autoMarkReadOnScroll: ($event.target as HTMLInputElement).checked })" />
         滚动到底自动已读
       </label>
+      <label class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        <input type="checkbox" :checked="prefs.unreadOnly" class="accent-[var(--accent)]" @change="settings.updatePrefs({ unreadOnly: ($event.target as HTMLInputElement).checked })" />
+        列表与侧栏只显示未读
+      </label>
     </div>
 
     <button data-reset class="mt-5 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800" @click="settings.resetPrefs()">
