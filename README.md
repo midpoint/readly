@@ -18,11 +18,12 @@
 
 ```bash
 pnpm install
+pnpm build                                # 先构建 web(worker 的 assets/测试都需要 web/dist)
 pnpm --filter @readly/worker d1:migrate:local
 pnpm dev          # 前端 5173 + worker 8787
 ```
 
-未配置 `AUTH_TOKEN` 时本地不校验令牌。
+未配置 `AUTH_TOKEN` 时本地不校验令牌。可复制 `worker/.dev.vars.example` 为 `worker/.dev.vars` 以在本地启用令牌校验。
 
 提示:`GET /__scheduled` 会被 SPA 静态资源回退吞掉(返回 index.html);本地触发定时任务请用:
 
@@ -55,5 +56,5 @@ npx wrangler deploy
 ## 测试
 
 ```bash
-pnpm -r test
+pnpm build && pnpm -r test
 ```
