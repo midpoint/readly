@@ -75,7 +75,7 @@ function save(): void {
         </div>
       </div>
       <div class="mt-5 flex justify-end gap-2">
-        <button class="rounded-lg px-3 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" @click="emit('close')">取消</button>
+        <button class="rounded-lg px-3 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="emit('close')">取消</button>
         <button data-rule-save :disabled="!canSave" class="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-sm text-white disabled:opacity-50" @click="save">保存</button>
       </div>
     </div>
