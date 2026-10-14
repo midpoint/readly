@@ -221,6 +221,9 @@ async function confirmDelete(feed: Feed): Promise<void> {
         <span>稍后读</span>
         <span v-if="stats?.laterTotal" class="text-xs text-neutral-500">{{ stats.laterTotal }}</span>
       </button>
+      <button :class="navItem" @click="router.push('/events')">
+        <span>事件</span>
+      </button>
     </nav>
     <div class="mt-4 flex-1 overflow-y-auto px-2 pb-4">
       <template v-for="cat in visibleCategories" :key="cat.id">
