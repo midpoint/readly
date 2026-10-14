@@ -150,6 +150,7 @@ export const useAiStore = defineStore("ai", () => {
 
   // —— 摘要:请求与状态由本 store 负责,结果经返回值交给调用方(ReaderPane 落 reader.article.aiSummary) ——
   function cancelSummary(): void {
+    summarySeq += 1; // 与 resetSummary 对称:防御忽略 abort 的生成器继续回写
     summaryController?.abort();
     summaryController = null;
     summaryState.value = "idle";
@@ -195,11 +196,11 @@ export const useAiStore = defineStore("ai", () => {
     const outcome = parseSummary(summaryStream.value);
     summaryState.value = "done";
     if (outcome.summary) {
-      try {
-        await api(`/api/articles/${input.id}/ai-summary`, { method: "POST", body: { summary: outcome.summary } });
-      } catch {
-        // 静默:缓存写回失败不影响本次展示(下次生成重试)
-      }
+      // 缓存写回即发即忘:不阻塞结果返回(否则 POST 窗口内卡片未落、按钮可重入、状态 done 会闪现降级提示);
+      // 失败静默:本地展示已就绪,缓存下次生成重试
+      void api(`/api/articles/${input.id}/ai-summary`, { method: "POST", body: { summary: outcome.summary } }).catch(
+        () => undefined
+      );
     }
     return outcome;
   }

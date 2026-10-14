@@ -412,6 +412,58 @@ describe("ai store 摘要流程", () => {
     expect(summaryPosts()).toHaveLength(0);
   });
 
+  // Fix wave 1:缓存写回即发即忘——POST 未决时不阻塞 generateSummary 返回(否则状态 done 已置、
+  // 卡片未落,UI 会先从流式分支闪出「模型未按 JSON 输出」提示且按钮可重入)
+  it("缓存写回即发即忘:POST 未决时返回值已就绪", async () => {
+    vi.useRealTimers(); // 该用例不依赖伪定时器;若退回 await 版,真实计时下的用例超时即红
+    const store = useAiStore();
+    store.init();
+    store.addProvider({ apiKey: "sk-1" });
+    vi.mocked(chatStream).mockImplementation(chunkedStream(['{"one_liner":"总', '结","points":["a"]}']));
+    let releasePost!: (v: unknown) => void;
+    const postGate = new Promise<unknown>((r) => (releasePost = r));
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (String(path).endsWith("/ai-summary") && opts?.method === "POST") return postGate;
+      return Promise.resolve({});
+    });
+
+    const outcome = await store.generateSummary(INPUT); // POST 在途也必须返回
+
+    expect(outcome.summary).toEqual({ oneLiner: "总结", points: ["a"] });
+    expect(store.summaryState).toBe("done");
+    expect(summaryPosts()).toHaveLength(1); // 已发出(未等待)
+    releasePost({ ok: true });
+  });
+
+  // Fix wave 1:cancelSummary 与 resetSummary 对称刷新序号——生成器忽略 abort 时,取消点后的续段不再入流
+  it("取消对称加固:生成器忽略 abort 时续段被序号作废,状态保持 idle", async () => {
+    const store = useAiStore();
+    store.init();
+    store.addProvider({ apiKey: "sk-1" });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        yield '{"one_liner":"总';
+        await gate; // 模拟忽略 signal:abort 的实现,取消后仍继续产出
+        yield '结","points":["a"]}';
+      })()
+    );
+
+    const pending = store.generateSummary(INPUT);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.summaryStream).toBe('{"one_liner":"总');
+    store.cancelSummary();
+    expect(store.summaryState).toBe("idle");
+
+    release(); // 续段到达:应被作废
+    const outcome = await pending;
+    expect(store.summaryState).toBe("idle");
+    expect(store.summaryStream).toBe('{"one_liner":"总');
+    expect(outcome.summary).toBeNull();
+    expect(summaryPosts()).toHaveLength(0);
+  });
+
   it("未配置:立即 reject,不发请求、状态仍 idle", async () => {
     const store = useAiStore();
     store.init();

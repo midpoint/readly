@@ -177,6 +177,30 @@ describe("ReaderPane AI 摘要", () => {
     expect(vi.mocked(chatStream)).not.toHaveBeenCalled();
   });
 
+  // Fix wave 1:缓存写回未决时卡片也要直达,不得闪出降级提示(即发即忘的 UI 侧断言)
+  it("缓存写回未决不阻塞卡片:成功路径不闪降级提示、按钮不重入", async () => {
+    await mountReader({});
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        yield '{"one_liner":"总结","points":["P"]}';
+      })()
+    );
+    let releasePost!: (v: unknown) => void;
+    const postGate = new Promise<unknown>((r) => (releasePost = r));
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (String(path).endsWith("/ai-summary") && opts?.method === "POST") return postGate;
+      return Promise.resolve({});
+    });
+
+    aiButton().click();
+    await vi.waitFor(() => expect(host!.querySelector("[data-ai-card]")).not.toBeNull());
+
+    expect(host!.textContent).not.toContain("模型未按 JSON 输出");
+    expect(host!.querySelector("[data-ai-stream]")).toBeNull();
+    expect(aiButton().disabled).toBe(false);
+    releasePost({ ok: true });
+  });
+
   it("重新生成:再次流式生成并替换卡片内容", async () => {
     await mountReader({ aiSummary: { oneLiner: "旧总结", points: ["旧"] } });
     aiButton().click();
