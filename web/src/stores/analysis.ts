@@ -43,7 +43,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
   let activeRequest = 0;
   let putTimer: ReturnType<typeof setTimeout> | null = null;
   let serverCopy: string | null = null;
-  let syncing = false;
+  let syncPromise: Promise<void> | null = null;
+  let pendingSync = false;
 
   async function fetchPage(cursorId: number | null): Promise<MirrorPage> {
     return api("/api/articles/mirror", { query: { cursor_id: cursorId ?? undefined, limit: 200 } });
@@ -96,18 +97,30 @@ export const useAnalysisStore = defineStore("analysis", () => {
     }
   }
 
-  async function syncIncremental(): Promise<void> {
-    if (!mirror || syncing) return;
-    syncing = true;
-    syncState.value = "syncing";
-    try {
-      await withMirror((m) => syncMirror(m, fetchPage));
-      syncState.value = "done";
-    } catch {
-      syncState.value = "error";
-    } finally {
-      syncing = false;
+  // 在途复用 + 排队补跑:同步进行中再被触发(如刷新订阅、进入事件视图)不丢失,
+  // 复用同一 promise 返回,并在当前一轮结束后自动补跑一轮(合并并发触发,至多多跑一次)。
+  function syncIncremental(): Promise<void> {
+    if (!mirror) return Promise.resolve();
+    if (syncPromise) {
+      pendingSync = true;
+      return syncPromise;
     }
+    syncState.value = "syncing";
+    syncPromise = (async () => {
+      try {
+        await withMirror((m) => syncMirror(m, fetchPage));
+        syncState.value = "done";
+      } catch {
+        syncState.value = "error";
+      } finally {
+        syncPromise = null;
+        if (pendingSync) {
+          pendingSync = false;
+          void syncIncremental();
+        }
+      }
+    })();
+    return syncPromise;
   }
 
   function updateClusterPrefs(patch: Partial<ClusterPrefs>): void {
@@ -189,6 +202,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
     progress.value = 0;
     try {
       rows = await withMirror((m) => m.getAllNewest(clusterPrefs.value.scope));
+      // 读取期间被取消(cancel 置 computing=false):不再发消息,避免取消后又落地一轮结果
+      if (!computing.value) return;
       if (rows.length < 2) {
         groups.value = [];
         computing.value = false;
@@ -198,7 +213,9 @@ export const useAnalysisStore = defineStore("analysis", () => {
         id: r.id,
         title: r.title,
         excerpt: r.excerpt,
-        content: r.content,
+        // 截断到 500 字(与 worker 侧 buildDocText 的 500 字口径一致),
+        // 消除大 body 结构化克隆的传输开销
+        content: r.content ? r.content.slice(0, 500) : null,
         publishedAt: r.publishedAt,
       }));
       activeRequest = ++requestSeq;

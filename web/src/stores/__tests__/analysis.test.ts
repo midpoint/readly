@@ -336,4 +336,72 @@ describe("analysis store", () => {
     await readyStore(await seededMirror());
     expect(vi.mocked(createAnalysisWorker)).not.toHaveBeenCalled();
   });
+
+  it("syncIncremental 在途时复用同一 promise,完成后补跑一轮(触发不丢失)", async () => {
+    const mirror = await seededMirror();
+    vi.mocked(createMirror).mockResolvedValue(mirror);
+    const releases: (() => void)[] = [];
+    vi.mocked(syncMirror).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(() => resolve({ synced: 0, total: ROWS.length, exhausted: true }));
+        })
+    );
+
+    const store = useAnalysisStore();
+    await store.init(); // init 内部已触发第一轮(在途)
+    expect(store.syncState).toBe("syncing");
+
+    const p2 = store.syncIncremental(); // 在途再触发:复用同一轮
+    const p3 = store.syncIncremental(); // 重复触发仍复用
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(1); // 未新开一轮
+
+    releases.shift()!(); // 只完成第一轮
+    // 两个调用都由第一轮完成(若各自新开一轮,这里会因无第二个 release 而挂起)
+    await Promise.all([p2, p3]);
+    // 排队补跑:自动再触发一轮(多次触发合并,只补跑一次)
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2);
+    expect(store.syncState).toBe("syncing");
+
+    releases.shift()!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.syncState).toBe("done");
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2);
+  });
+
+  it("compute 把 content 截断到 500 字(与 worker 侧 buildDocText 口径一致)", async () => {
+    const long = "甲".repeat(1200);
+    const mirror = new MemoryMirror();
+    await mirror.putMany([row(1, T1, { content: long }), row(2, T2)]);
+    const store = await readyStore(mirror);
+
+    await store.compute();
+    const msg = hoisted.worker!.posted.at(-1) as { items: { id: number; content: string | null }[] };
+    const item = msg.items.find((i) => i.id === 1)!;
+    expect(item.content).toBe(long.slice(0, 500));
+    expect(msg.items.find((i) => i.id === 2)!.content).toBe("<p>2</p>");
+  });
+
+  it("镜像读取期间取消:读取返回后不再发送 cluster 消息", async () => {
+    const mirror = await seededMirror();
+    let releaseRead!: () => void;
+    vi.spyOn(mirror, "getAllNewest").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRead = () => resolve([...ROWS].reverse());
+        })
+    );
+    const store = await readyStore(mirror);
+
+    const pending = store.compute();
+    expect(store.computing).toBe(true);
+    store.cancel(); // 读取在途时取消
+    releaseRead();
+    await pending;
+
+    const clusterMsgs = hoisted.worker!.posted.filter((m) => (m as { type: string }).type === "cluster");
+    expect(clusterMsgs).toHaveLength(0);
+    expect(store.groups).toBeNull();
+    expect(store.computing).toBe(false);
+  });
 });

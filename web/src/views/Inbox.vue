@@ -44,7 +44,17 @@ async function applyRouteQuery(): Promise<void> {
   }
   const articleId = numParam(route.query.a);
   if (articleId !== null) {
-    if (articleId !== reader.article?.id) void reader.open(articleId).catch(() => undefined);
+    if (articleId !== reader.article?.id) {
+      // ?a= 深链打开与列表点击同语义:打开即按偏好标记已读
+      void reader
+        .open(articleId)
+        .then(() => {
+          if (!settings.prefs.autoMarkReadOnOpen) return;
+          const item = articles.items.find((i) => i.id === articleId);
+          if (item && !item.isRead) void articles.setState(articleId, { isRead: true }).catch(() => undefined);
+        })
+        .catch(() => undefined);
+    }
   } else if (reader.article) {
     reader.close();
   }
