@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import { SETTING_KEYS, type AiProvider } from "@readly/shared";
 import { api } from "@/api/client";
-import { PROVIDER_PRESETS } from "@/modules/ai";
+import { buildSummaryMessages, chatStream, parseSummary, PROVIDER_PRESETS, type SummaryOutcome } from "@/modules/ai";
 
 const LS_KEY = "readly_ai";
 const PUT_DEBOUNCE_MS = 1000;
@@ -69,11 +69,20 @@ function redact(state: AiState, syncKeys: boolean): AiState {
   };
 }
 
+export type SummaryState = "idle" | "loading" | "done" | "error";
+
 export const useAiStore = defineStore("ai", () => {
   const providers = ref<AiProvider[]>([]);
   const activeId = ref<string | null>(null);
   const syncKeys = ref(false);
   const ready = ref(false);
+
+  const summaryState = ref<SummaryState>("idle");
+  const summaryStream = ref("");
+  const summaryError = ref<string | null>(null);
+  let summaryController: AbortController | null = null;
+  // 生成序号:取消 / 切文复位后,在途生成的结果直接作废,不再回写状态
+  let summarySeq = 0;
 
   let putTimer: ReturnType<typeof setTimeout> | null = null;
   let serverCopy: string | null = null;
@@ -101,17 +110,21 @@ export const useAiStore = defineStore("ai", () => {
       syncKeys: syncKeys.value,
     });
     providers.value = next.providers;
+    // 首条自动激活:当前无 active 且新条目通过清洗时设为 active(已有 active 不顶掉)
+    if (activeId.value === null && next.providers.some((p) => p.id === id)) activeId.value = id;
     return id;
   }
 
   function updateProvider(id: string, patch: Partial<AiProvider>): void {
     // 注意:patch 清洗后不合法(如 model 置空)会整条被 sanitize 丢弃(静默删除),
-    // 编辑器层必须挡住(与关键词规则同口径)
-    providers.value = sanitizeAi({
-      providers: providers.value.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-      activeId: activeId.value,
-      syncKeys: syncKeys.value,
-    }).providers;
+    // 编辑器层必须挡住(与关键词规则同口径);整条 apply 使 activeId 悬空时同步自愈为 null
+    apply(
+      sanitizeAi({
+        providers: providers.value.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+        activeId: activeId.value,
+        syncKeys: syncKeys.value,
+      })
+    );
   }
 
   function removeProvider(id: string): void {
@@ -133,6 +146,62 @@ export const useAiStore = defineStore("ai", () => {
 
   function updateSyncKeys(v: boolean): void {
     syncKeys.value = v === true;
+  }
+
+  // —— 摘要:请求与状态由本 store 负责,结果经返回值交给调用方(ReaderPane 落 reader.article.aiSummary) ——
+  function cancelSummary(): void {
+    summaryController?.abort();
+    summaryController = null;
+    summaryState.value = "idle";
+    summaryError.value = null;
+  }
+
+  function resetSummary(): void {
+    summarySeq += 1; // 在途生成作废(结果不再回写状态)
+    summaryController?.abort();
+    summaryController = null;
+    summaryState.value = "idle";
+    summaryStream.value = "";
+    summaryError.value = null;
+  }
+
+  async function generateSummary(input: { id: number; title: string; text: string; lang: "zh" | "en" | null }): Promise<SummaryOutcome> {
+    const provider = active.value;
+    if (!provider) throw new Error("请先在设置中配置 AI 服务商");
+    const seq = ++summarySeq;
+    const controller = new AbortController();
+    summaryController?.abort(); // 上一轮若仍在途,先作废
+    summaryController = controller;
+    summaryState.value = "loading";
+    summaryStream.value = "";
+    summaryError.value = null;
+    try {
+      for await (const delta of chatStream({
+        provider,
+        messages: buildSummaryMessages({ title: input.title, text: input.text, lang: input.lang }),
+        signal: controller.signal,
+      })) {
+        if (seq !== summarySeq) break;
+        summaryStream.value += delta;
+      }
+    } catch (e) {
+      // 取消 / 已复位:静默收束(状态由 cancelSummary/resetSummary 决定),不报错
+      if (seq !== summarySeq || controller.signal.aborted) return { summary: null, raw: "" };
+      summaryError.value = e instanceof Error ? e.message : "AI 摘要生成失败";
+      summaryState.value = "error";
+      throw e;
+    }
+    if (seq !== summarySeq) return { summary: null, raw: "" };
+    const outcome = parseSummary(summaryStream.value);
+    summaryState.value = "done";
+    if (outcome.summary) {
+      try {
+        await api(`/api/articles/${input.id}/ai-summary`, { method: "POST", body: { summary: outcome.summary } });
+      } catch {
+        // 静默:缓存写回失败不影响本次展示(下次生成重试)
+      }
+    }
+    return outcome;
   }
 
   async function pushRemote(): Promise<void> {
@@ -210,6 +279,12 @@ export const useAiStore = defineStore("ai", () => {
     removeProvider,
     setActive,
     updateSyncKeys,
+    summaryState,
+    summaryStream,
+    summaryError,
+    generateSummary,
+    cancelSummary,
+    resetSummary,
     init,
   };
 });

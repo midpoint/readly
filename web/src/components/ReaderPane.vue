@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { RouterLink } from "vue-router";
+import { aiTextOf, detectTextLang } from "@/modules/ai";
 import { highlightMatchesIn } from "@/modules/highlight";
 import { sanitizeArticleHtml } from "@/modules/render";
+import { useAiStore } from "@/stores/ai";
 import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
@@ -15,6 +18,44 @@ const articles = useArticlesStore();
 const analysis = useAnalysisStore();
 const showThemePanel = ref(false);
 
+// AI 摘要:本地切片一次(幂等);未配置时点击按钮给出设置引导
+const ai = useAiStore();
+const showAiCard = ref(false);
+const showAiGuide = ref(false);
+ai.init();
+
+async function onAiClick(): Promise<void> {
+  const a = reader.article;
+  if (!a) return;
+  if (a.aiSummary) {
+    // 已有缓存:只切换卡片显隐,不重新生成
+    showAiCard.value = !showAiCard.value;
+    return;
+  }
+  if (!ai.configured) {
+    showAiGuide.value = true;
+    return;
+  }
+  showAiCard.value = true;
+  // 失败时 store 已写入 summaryError(经 [data-ai-error] 展示);取消/切文静默收束
+  const outcome = await ai
+    .generateSummary({
+      id: a.id,
+      title: a.title,
+      text: aiTextOf(a.contentFull ?? a.content ?? a.excerpt),
+      lang: detectTextLang(a.title),
+    })
+    .catch(() => null);
+  if (outcome?.summary) a.aiSummary = outcome.summary;
+}
+
+function regenerate(): void {
+  const a = reader.article;
+  if (!a) return;
+  a.aiSummary = null;
+  void onAiClick();
+}
+
 const showOriginal = ref(false);
 const useFull = computed(() => Boolean(reader.article?.contentFull) && !showOriginal.value);
 const html = computed(() => {
@@ -26,6 +67,10 @@ watch(
   () => reader.article?.id,
   () => {
     showOriginal.value = false;
+    // 切文复位:卡片/引导收起;在途摘要作废(已有 aiSummary 的缓存不自动弹,由按钮展开)
+    showAiCard.value = false;
+    showAiGuide.value = false;
+    ai.resetSummary();
   }
 );
 
@@ -119,6 +164,9 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             >
               {{ reader.fullTextLoading ? "抓取中…" : reader.article.contentFull ? "重新抓取" : "抓取全文" }}
             </button>
+            <button data-ai-button :class="[btn, 'disabled:opacity-50']" :disabled="ai.summaryState === 'loading'" @click="void onAiClick()">
+              {{ ai.summaryState === "loading" ? "生成中…" : "AI 摘要" }}
+            </button>
             <button :class="btn" @click="showThemePanel = !showThemePanel">Aa 主题</button>
             <a v-if="reader.article.url" :href="reader.article.url" target="_blank" rel="noopener noreferrer" :class="btn">原文</a>
           </div>
@@ -139,6 +187,36 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
               {{ showOriginal ? "显示全文" : "显示摘要" }}
             </button>
           </div>
+          <div
+            v-if="showAiCard && reader.article.aiSummary"
+            data-ai-card
+            class="mx-auto mt-3 w-full max-w-[var(--reader-width,720px)] rounded-xl border border-neutral-200 px-4 py-3 text-sm dark:border-neutral-800"
+          >
+            <p class="font-medium dark:text-neutral-100">{{ reader.article.aiSummary.oneLiner }}</p>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-neutral-600 dark:text-neutral-300">
+              <li v-for="(p, i) in reader.article.aiSummary.points" :key="i">{{ p }}</li>
+            </ul>
+            <div class="mt-2 flex justify-end gap-2">
+              <button data-ai-regenerate class="text-xs text-neutral-500 hover:underline dark:text-neutral-400" @click="regenerate">重新生成</button>
+            </div>
+          </div>
+          <div
+            v-else-if="showAiCard && ai.summaryState !== 'idle'"
+            data-ai-stream-card
+            class="mx-auto mt-3 w-full max-w-[var(--reader-width,720px)] rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800"
+          >
+            <p data-ai-stream class="whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-300">{{ ai.summaryStream }}<span v-if="ai.summaryState === 'loading'">▍</span></p>
+            <p v-if="ai.summaryState === 'done' && !reader.article.aiSummary" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">模型未按 JSON 输出,以上为原始回复</p>
+          </div>
+          <div
+            v-else-if="showAiGuide && !ai.configured"
+            data-ai-guide
+            class="mx-auto mt-3 w-full max-w-[var(--reader-width,720px)] rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800"
+          >
+            <p class="text-sm text-neutral-600 dark:text-neutral-300">尚未配置 AI 服务商。</p>
+            <RouterLink to="/settings" class="text-sm text-[var(--accent-strong)] hover:underline">前往设置 →</RouterLink>
+          </div>
+          <p v-if="ai.summaryError" data-ai-error class="mx-auto mt-2 w-full max-w-[var(--reader-width,720px)] text-xs text-red-600 dark:text-red-400">{{ ai.summaryError }}</p>
           <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>

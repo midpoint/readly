@@ -1,13 +1,19 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SETTING_KEYS, type AiProvider } from "@readly/shared";
+import { SETTING_KEYS, type AiProvider, type AiSummary } from "@readly/shared";
 import { api } from "@/api/client";
-import { PROVIDER_PRESETS } from "@/modules/ai";
+import { chatStream, PROVIDER_PRESETS } from "@/modules/ai";
 import { sanitizeAi, useAiStore } from "@/stores/ai";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
   return { ...actual, api: vi.fn() };
+});
+
+// chatStream 打桩:摘要流程只关心「取流 + 状态机 + 缓存写回」,SSE 解析已由 modules 层单测覆盖
+vi.mock("@/modules/ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/modules/ai")>();
+  return { ...actual, chatStream: vi.fn() };
 });
 
 const LS_KEY = "readly_ai";
@@ -44,6 +50,7 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(api).mockReset();
   vi.mocked(api).mockResolvedValue({});
+  vi.mocked(chatStream).mockReset();
   vi.useFakeTimers();
 });
 
@@ -163,10 +170,31 @@ describe("ai store 服务商 CRUD", () => {
     expect(store.activeId).toBeNull();
   });
 
-  it("addProvider 不自动激活(激活由 setActive 显式决定)", () => {
+  // 控制者追加 1:首条服务商自动激活(空 store 添加即成为 active;已有 active 时新增不顶掉)
+  it("addProvider 首条自动激活;已有 active 时新增不改变 activeId", () => {
     const store = useAiStore();
     store.init();
-    store.addProvider();
+    const id1 = store.addProvider();
+    expect(store.activeId).toBe(id1);
+    expect(store.configured).toBe(true);
+
+    const id2 = store.addProvider({ name: "第二条" });
+    expect(store.activeId).toBe(id1);
+
+    store.setActive(id2);
+    store.addProvider({ name: "第三条" });
+    expect(store.activeId).toBe(id2);
+  });
+
+  // 控制者追加 2:updateProvider 后 sanitize 丢弃该条(如 model 置空)→ activeId 悬空自愈为 null
+  it("updateProvider 被 sanitize 丢弃该条 → activeId 置 null(悬空自愈)", () => {
+    const store = useAiStore();
+    store.init();
+    const id = store.addProvider();
+    expect(store.activeId).toBe(id);
+
+    store.updateProvider(id, { model: "" });
+    expect(store.providers).toEqual([]);
     expect(store.activeId).toBeNull();
     expect(store.configured).toBe(false);
   });
@@ -287,5 +315,109 @@ describe("ai store 持久化与密钥口径", () => {
     await vi.advanceTimersByTimeAsync(1100);
     expect(putCount()).toBe(1);
     expect(Object.prototype.hasOwnProperty.call(lastAiPayload()!.providers[0], "apiKey")).toBe(false);
+  });
+});
+
+// 摘要写回缓存的目标(store 负责请求,ReaderPane 负责把返回值落到 reader.article.aiSummary)
+function summaryPosts(): { id: string; body: unknown }[] {
+  return vi
+    .mocked(api)
+    .mock.calls.filter(([path, opts]) => /^\/api\/articles\/\d+\/ai-summary$/.test(path) && opts?.method === "POST")
+    .map(([path, opts]) => ({ id: path.split("/")[3]!, body: opts!.body }));
+}
+
+describe("ai store 摘要流程", () => {
+  const INPUT = { id: 7, title: "标题", text: "正文内容", lang: "zh" as const };
+
+  // 让出控制权时,上一段已被 store 消费计入(用于断言「逐段累计」)
+  function chunkedStream(chunks: string[]): (opts: { signal?: AbortSignal }) => AsyncGenerator<string> {
+    return () => {
+      const store = useAiStore();
+      return (async function* () {
+        for (const c of chunks) {
+          yield c;
+          seen.push(store.summaryStream);
+        }
+      })();
+    };
+  }
+  let seen: string[] = [];
+
+  beforeEach(() => {
+    seen = [];
+  });
+
+  it("流式生成:逐段累计、状态 done、POST 缓存写回、返回值携带 summary", async () => {
+    const store = useAiStore();
+    store.init();
+    const id = store.addProvider({ apiKey: "sk-1" });
+    vi.mocked(chatStream).mockImplementation(chunkedStream(['{"one_liner":"总', '结","points":["a"]}']));
+
+    const outcome = await store.generateSummary(INPUT);
+
+    expect(outcome.summary).toEqual({ oneLiner: "总结", points: ["a"] });
+    expect(store.summaryStream).toBe('{"one_liner":"总结","points":["a"]}');
+    expect(seen).toEqual(['{"one_liner":"总', '{"one_liner":"总结","points":["a"]}']);
+    expect(store.summaryState).toBe("done");
+    expect(store.summaryError).toBeNull();
+    // 传给 chatStream 的是当前激活服务商
+    expect(vi.mocked(chatStream).mock.calls[0]![0].provider.id).toBe(id);
+
+    const posts = summaryPosts();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.id).toBe("7");
+    expect((posts[0]!.body as { summary: AiSummary }).summary.oneLiner).toBe("总结");
+  });
+
+  it("非 JSON 降级:状态 done、返回 summary:null 且原文留存(不写缓存)", async () => {
+    const store = useAiStore();
+    store.init();
+    store.addProvider({ apiKey: "sk-1" });
+    vi.mocked(chatStream).mockImplementation(chunkedStream(["这是一段普通文字"]));
+
+    const outcome = await store.generateSummary(INPUT);
+
+    expect(outcome.summary).toBeNull();
+    expect(outcome.raw).toBe("这是一段普通文字");
+    expect(store.summaryState).toBe("done");
+    expect(store.summaryStream).toBe("这是一段普通文字");
+    expect(summaryPosts()).toHaveLength(0);
+  });
+
+  it("取消:abort 传给 chatStream 的 signal,状态回 idle,不写缓存", async () => {
+    const store = useAiStore();
+    store.init();
+    store.addProvider({ apiKey: "sk-1" });
+    let signal: AbortSignal | undefined;
+    vi.mocked(chatStream).mockImplementation((opts) => {
+      signal = opts.signal;
+      return (async function* () {
+        yield '{"one_liner":"总';
+        await new Promise((_, reject) => {
+          opts.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      })();
+    });
+
+    const pending = store.generateSummary(INPUT);
+    await vi.advanceTimersByTimeAsync(0); // 让首段入流
+    expect(store.summaryStream).toBe('{"one_liner":"总');
+    expect(store.summaryState).toBe("loading");
+
+    store.cancelSummary();
+    const outcome = await pending;
+    expect(signal!.aborted).toBe(true);
+    expect(store.summaryState).toBe("idle");
+    expect(outcome.summary).toBeNull();
+    expect(summaryPosts()).toHaveLength(0);
+  });
+
+  it("未配置:立即 reject,不发请求、状态仍 idle", async () => {
+    const store = useAiStore();
+    store.init();
+
+    await expect(store.generateSummary(INPUT)).rejects.toThrow("请先在设置中配置 AI 服务商");
+    expect(vi.mocked(chatStream)).not.toHaveBeenCalled();
+    expect(store.summaryState).toBe("idle");
   });
 });

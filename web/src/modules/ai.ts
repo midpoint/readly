@@ -42,7 +42,13 @@ export function buildSummaryMessages(input: { title: string; text: string; lang:
   ];
 }
 
-export function parseSummary(out: string): { summary: AiSummary | null; raw: string } {
+// 摘要解析结果:summary 为 null 表示模型未按 JSON 输出,raw 为原始回复(UI 降级展示)
+export interface SummaryOutcome {
+  summary: AiSummary | null;
+  raw: string;
+}
+
+export function parseSummary(out: string): SummaryOutcome {
   const raw = out.trim();
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
