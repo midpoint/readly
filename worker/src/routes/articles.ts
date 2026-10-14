@@ -232,6 +232,7 @@ articles.post("/articles/:id/ai-summary", async (c) => {
       oneLiner: (s as { oneLiner: string }).oneLiner.slice(0, 500),
       points: (s as { points: string[] }).points.slice(0, 8).map((p) => p.slice(0, 500)),
     });
+    // 经裁剪后不可达(上限 1×500 + 8×500 字符),保留为防御
     if (serialized.length > 32 * 1024) return fail(c, 413, "too_large", "摘要内容过大");
   }
   const res = await c.env.DB.prepare("UPDATE articles SET ai_summary = ? WHERE id = ?").bind(serialized, id).run();

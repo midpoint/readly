@@ -18,7 +18,12 @@ describe("POST /api/ai/chat", () => {
   it("透传上游 SSE,并转发 Authorization 与 model", async () => {
     fetchMock
       .get("https://api.ai.example.com")
-      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .intercept({
+        path: "/v1/chat/completions",
+        method: "POST",
+        headers: { authorization: "Bearer sk-test" },
+        body: JSON.stringify({ model: "test-model", messages: BODY.messages, stream: true }),
+      })
       .reply(200, "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\ndata: [DONE]\n\n", {
         headers: { "Content-Type": "text/event-stream" },
       });
