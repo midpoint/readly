@@ -133,4 +133,32 @@ describe("chatStream", () => {
       collectChat(chatStream({ provider: providerOf({ useProxy: true }), messages: MSGS }))
     ).rejects.toThrow(/502/);
   });
+
+  // 控制者追加:代理 401 即全局未授权(令牌失效),就地清令牌并派发 readly:unauthorized
+  // (与 api/client 的 401 口径一致);直连 401 是服务商自身鉴权失败,不动本地令牌
+  it("代理 401:抛错含 401、清除 readly_token 并派发 readly:unauthorized", async () => {
+    localStorage.setItem("readly_token", "tok-old");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
+    let fired = 0;
+    const onUnauthorized = (): void => {
+      fired += 1;
+    };
+    window.addEventListener("readly:unauthorized", onUnauthorized);
+    try {
+      await expect(
+        collectChat(chatStream({ provider: providerOf({ useProxy: true, apiKey: "" }), messages: MSGS }))
+      ).rejects.toThrow(/401/);
+      expect(localStorage.getItem("readly_token")).toBeNull();
+      expect(fired).toBe(1);
+
+      // 直连 401:仅抛服务商错误,不清令牌、不派发全局事件
+      localStorage.setItem("readly_token", "tok-keep");
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("bad key", { status: 401 })));
+      await expect(collectChat(chatStream({ provider: providerOf(), messages: MSGS }))).rejects.toThrow(/401/);
+      expect(localStorage.getItem("readly_token")).toBe("tok-keep");
+      expect(fired).toBe(1);
+    } finally {
+      window.removeEventListener("readly:unauthorized", onUnauthorized);
+    }
+  });
 });

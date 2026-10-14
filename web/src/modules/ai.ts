@@ -1,5 +1,5 @@
 import type { AiProvider, AiSummary } from "@readly/shared";
-import { getToken } from "@/api/client";
+import { clearToken, getToken } from "@/api/client";
 import { htmlToText } from "./keywords";
 import { parseSseStream } from "./sse";
 
@@ -99,6 +99,11 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
   }
 
   if (!res.ok) {
+    // 代理路径 401 = 本站令牌失效(与 api/client 口径一致):就地补全局未授权流,再抛服务商错误
+    if (provider.useProxy && res.status === 401) {
+      clearToken();
+      window.dispatchEvent(new CustomEvent("readly:unauthorized"));
+    }
     const snippet = (await res.text().catch(() => "")).slice(0, 300);
     throw new Error(`服务商返回错误(HTTP ${res.status})${snippet ? `: ${snippet}` : ""}`);
   }
