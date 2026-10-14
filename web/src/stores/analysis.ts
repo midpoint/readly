@@ -1,20 +1,55 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
-import { CLUSTER_THRESHOLDS, SETTING_KEYS, type ClusterLevel, type ClusterPrefs } from "@readly/shared";
+import {
+  CLUSTER_THRESHOLDS,
+  SETTING_KEYS,
+  type ClusterLevel,
+  type ClusterPrefs,
+  type KeywordRule,
+} from "@readly/shared";
 import { api } from "@/api/client";
-import { createMirror, syncMirror, type Mirror, type MirrorPage, type MirrorRow } from "@/modules/idb";
+import { MIRROR_LIMIT, createMirror, syncMirror, type Mirror, type MirrorPage, type MirrorRow } from "@/modules/idb";
 import type { ClusterGroup, ClusterInput } from "@/modules/cluster";
+import { htmlToText, matchDocs, type KeywordsResult } from "@/modules/keywords";
 import { createAnalysisWorker } from "@/modules/worker-factory";
 
 const LS_KEY = "readly_cluster_prefs";
+const RULES_LS_KEY = "readly_keyword_rules";
 const DEFAULT_CLUSTER_PREFS: ClusterPrefs = { scope: 200, level: "normal" };
 const PUT_DEBOUNCE_MS = 1000;
+const HITS_DEBOUNCE_MS = 300;
+const MAX_RULES = 100;
+const DEFAULT_RULE_COLOR = "#3b82f6";
 
 export function sanitizeClusterPrefs(raw: unknown): ClusterPrefs {
   const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
   const scope = o.scope === 100 || o.scope === 200 || o.scope === 300 ? o.scope : 200;
   const level: ClusterLevel = o.level === "loose" || o.level === "strict" ? o.level : "normal";
   return { scope, level };
+}
+
+export function sanitizeKeywordRules(raw: unknown): KeywordRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: KeywordRule[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.id !== "string" || !o.id || seen.has(o.id)) continue;
+    if (typeof o.keyword !== "string" || !o.keyword.trim()) continue;
+    seen.add(o.id);
+    out.push({
+      id: o.id,
+      name: typeof o.name === "string" && o.name.trim() ? o.name.trim().slice(0, 40) : o.keyword.trim().slice(0, 40),
+      keyword: o.keyword.trim().slice(0, 200),
+      isRegex: o.isRegex === true,
+      caseSensitive: o.caseSensitive === true,
+      color: typeof o.color === "string" && /^#[0-9a-fA-F]{6}$/.test(o.color) ? o.color : DEFAULT_RULE_COLOR,
+      enabled: o.enabled !== false,
+    });
+    if (out.length >= MAX_RULES) break;
+  }
+  return out;
 }
 
 export interface UiClusterGroup {
@@ -26,6 +61,19 @@ export interface UiClusterGroup {
   members: { id: number; title: string; feedTitle: string; publishedAt: string }[];
 }
 
+export interface HitEntry {
+  ruleId: string;
+  count: number;
+}
+
+export interface HitArticle {
+  id: number;
+  title: string;
+  feedTitle: string;
+  publishedAt: string;
+  count: number;
+}
+
 export const useAnalysisStore = defineStore("analysis", () => {
   const ready = ref(false);
   const mirrorKind = ref<"idb" | "memory" | null>(null);
@@ -35,6 +83,11 @@ export const useAnalysisStore = defineStore("analysis", () => {
   const computing = ref(false);
   const progress = ref(0);
   const computeError = ref<string | null>(null);
+  const rules = ref<KeywordRule[]>([]);
+  const rulesInvalid = ref<string[]>([]);
+  const hits = ref<Record<number, HitEntry[]>>({});
+  const hitsByRule = ref<Record<string, HitArticle[]>>({});
+  const hitsState = ref<"idle" | "computing" | "done" | "error">("idle");
 
   let mirror: Mirror | null = null;
   let rows: MirrorRow[] = []; // 最近一次读取的镜像快照(计算时刷新)
@@ -43,8 +96,29 @@ export const useAnalysisStore = defineStore("analysis", () => {
   let activeRequest = 0;
   let putTimer: ReturnType<typeof setTimeout> | null = null;
   let serverCopy: string | null = null;
+  let rulesServerCopy: string | null = null;
   let syncPromise: Promise<void> | null = null;
   let pendingSync = false;
+  let hitsTimer: ReturnType<typeof setTimeout> | null = null;
+  let hitsRequestId = 0;
+  let lastHitsDocs: MirrorRow[] = []; // 命中计算时的镜像快照,供 hitsByRule 关联元数据
+
+  function hitsFor(articleId: number): HitEntry[] {
+    return hits.value[articleId] ?? [];
+  }
+
+  function addRule(partial: Omit<KeywordRule, "id">): void {
+    const id = `kr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    rules.value = sanitizeKeywordRules([...rules.value, { ...partial, id }]);
+  }
+
+  function updateRule(id: string, patch: Partial<KeywordRule>): void {
+    rules.value = sanitizeKeywordRules(rules.value.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function removeRule(id: string): void {
+    rules.value = sanitizeKeywordRules(rules.value.filter((r) => r.id !== id));
+  }
 
   async function fetchPage(cursorId: number | null): Promise<MirrorPage> {
     return api("/api/articles/mirror", { query: { cursor_id: cursorId ?? undefined, limit: 200 } });
@@ -80,6 +154,14 @@ export const useAnalysisStore = defineStore("analysis", () => {
         /* 保留默认 */
       }
     }
+    const localRules = localStorage.getItem(RULES_LS_KEY);
+    if (localRules) {
+      try {
+        rules.value = sanitizeKeywordRules(JSON.parse(localRules));
+      } catch {
+        /* 保留空集 */
+      }
+    }
     ready.value = true;
     void loadRemotePrefs();
     void syncIncremental();
@@ -88,6 +170,10 @@ export const useAnalysisStore = defineStore("analysis", () => {
   async function loadRemotePrefs(): Promise<void> {
     try {
       const all = await api<Record<string, unknown>>("/api/settings");
+      const sr = all[SETTING_KEYS.keywordRules];
+      // 服务端缺该键时按空集登记基线:本端无本地规则则不触发无意义回写
+      rulesServerCopy = JSON.stringify(sanitizeKeywordRules(sr));
+      if (sr !== undefined && localStorage.getItem(RULES_LS_KEY) === null) rules.value = sanitizeKeywordRules(sr);
       const sp = all[SETTING_KEYS.clusterPrefs];
       if (sp === undefined) return;
       serverCopy = JSON.stringify(sanitizeClusterPrefs(sp));
@@ -114,6 +200,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
         syncState.value = "error";
       } finally {
         syncPromise = null;
+        // 镜像落定后规则可能有新命中:防抖重算(与规则变更共用同一入口)
+        if (syncState.value === "done") scheduleHits();
         if (pendingSync) {
           pendingSync = false;
           void syncIncremental();
@@ -127,15 +215,23 @@ export const useAnalysisStore = defineStore("analysis", () => {
     clusterPrefs.value = sanitizeClusterPrefs({ ...clusterPrefs.value, ...patch });
   }
 
+  // 双键同 PUT:cluster_prefs 与 keyword_rules 各自 serverCopy 基线,任一变化即推送
   async function pushRemote(): Promise<void> {
     const serialized = JSON.stringify(clusterPrefs.value);
-    if (serialized === serverCopy) return;
+    const serializedRules = JSON.stringify(rules.value);
+    if (serialized === serverCopy && serializedRules === rulesServerCopy) return;
     try {
       await api("/api/settings", {
         method: "PUT",
-        body: { kv: { [SETTING_KEYS.clusterPrefs]: clusterPrefs.value } },
+        body: {
+          kv: {
+            [SETTING_KEYS.clusterPrefs]: clusterPrefs.value,
+            [SETTING_KEYS.keywordRules]: rules.value,
+          },
+        },
       });
       serverCopy = serialized;
+      rulesServerCopy = serializedRules;
     } catch {
       /* 静默 */
     }
@@ -154,27 +250,120 @@ export const useAnalysisStore = defineStore("analysis", () => {
     { deep: true, flush: "sync" }
   );
 
+  watch(
+    rules,
+    () => {
+      localStorage.setItem(RULES_LS_KEY, JSON.stringify(rules.value));
+      scheduleHits();
+      if (putTimer) clearTimeout(putTimer);
+      putTimer = setTimeout(() => {
+        putTimer = null;
+        void pushRemote();
+      }, PUT_DEBOUNCE_MS);
+    },
+    { deep: true, flush: "sync" }
+  );
+
   function getWorker(): Worker {
     if (!worker) {
       worker = createAnalysisWorker();
+      // 按 type 分流:聚类通道(progress/result/cancelled)沿用 activeRequest 校验,
+      // 关键词通道(keywordsResult)用独立 hitsRequestId;error 无通道标记,按 requestId 判定来源。
       worker.onmessage = (e: MessageEvent) => {
         const msg = e.data as
           | { type: "progress"; requestId: number; ratio: number }
           | { type: "result"; requestId: number; groups: ClusterGroup[] }
           | { type: "cancelled"; requestId: number }
+          | { type: "keywordsResult"; requestId: number; result: KeywordsResult }
           | { type: "error"; requestId: number };
+        if (msg.type === "keywordsResult") {
+          if (msg.requestId !== hitsRequestId) return;
+          rulesInvalid.value = msg.result.invalidRuleIds;
+          applyHits(msg.result, lastHitsDocs);
+          hitsState.value = "done";
+          return;
+        }
+        if (msg.type === "error") {
+          // 聚类在前:与既有 activeRequest 语义保持一致(取消后 activeRequest=0,迟到结果仍被丢弃)
+          if (msg.requestId === activeRequest) {
+            computeError.value = "聚类计算失败";
+            computing.value = false;
+          } else if (msg.requestId === hitsRequestId) {
+            hitsState.value = "error";
+          }
+          return;
+        }
         if (msg.requestId !== activeRequest) return;
         if (msg.type === "progress") progress.value = msg.ratio;
         else if (msg.type === "result") {
           groups.value = mapGroups(msg.groups);
           computing.value = false;
         } else {
-          if (msg.type === "error") computeError.value = "聚类计算失败";
           computing.value = false;
         }
       };
     }
     return worker;
+  }
+
+  function scheduleHits(): void {
+    if (hitsTimer) clearTimeout(hitsTimer);
+    hitsTimer = setTimeout(() => {
+      hitsTimer = null;
+      void computeHits();
+    }, HITS_DEBOUNCE_MS);
+  }
+
+  async function computeHits(): Promise<void> {
+    if (!mirror || hitsState.value === "computing") return;
+    if (rules.value.filter((r) => r.enabled).length === 0) {
+      hits.value = {};
+      hitsByRule.value = {};
+      hitsState.value = "done";
+      return;
+    }
+    hitsState.value = "computing";
+    try {
+      const docs = await withMirror((m) => m.getAllNewest(MIRROR_LIMIT));
+      const payload = docs.map((d) => ({
+        id: d.id,
+        title: d.title,
+        text: htmlToText(d.content ?? d.excerpt),
+      }));
+      lastHitsDocs = docs;
+      hitsRequestId += 1;
+      getWorker().postMessage({
+        type: "keywords",
+        requestId: hitsRequestId,
+        docs: payload,
+        rules: rules.value.map((r) => ({ ...r })),
+      });
+      // 结果在 onmessage 的 keywordsResult 分支落地
+    } catch {
+      hitsState.value = "error";
+    }
+  }
+
+  function applyHits(result: KeywordsResult, docs: MirrorRow[]): void {
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    const h: Record<number, HitEntry[]> = {};
+    const byRule: Record<string, HitArticle[]> = {};
+    for (const m of result.matches) {
+      (h[m.articleId] ??= []).push({ ruleId: m.ruleId, count: m.count });
+      const d = byId.get(m.articleId);
+      if (d) {
+        (byRule[m.ruleId] ??= []).push({
+          id: d.id,
+          title: d.title,
+          feedTitle: d.feedTitle,
+          publishedAt: d.publishedAt,
+          count: m.count,
+        });
+      }
+    }
+    for (const list of Object.values(byRule)) list.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+    hits.value = h;
+    hitsByRule.value = byRule;
   }
 
   function mapGroups(raw: ClusterGroup[]): UiClusterGroup[] {
@@ -251,6 +440,16 @@ export const useAnalysisStore = defineStore("analysis", () => {
     computing,
     progress,
     computeError,
+    rules,
+    rulesInvalid,
+    hits,
+    hitsByRule,
+    hitsState,
+    hitsFor,
+    addRule,
+    updateRule,
+    removeRule,
+    computeHits,
     init,
     syncIncremental,
     updateClusterPrefs,
