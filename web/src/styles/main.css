@@ -11,6 +11,13 @@
 
 :root {
   --accent: #3b82f6;
+  /* accent 的可读派生(小号强调文本/进度条,对比度 ≥4.5:1):浅色下压暗;深色下见 .dark 覆盖 */
+  --accent-strong: color-mix(in srgb, var(--accent) 62%, black);
+}
+
+.dark {
+  /* 深色下 accent 过于昏暗(纯蓝在深底上不足 4.5:1),提亮为浅蓝 */
+  --accent-strong: color-mix(in srgb, var(--accent) 75%, white);
 }
 
 html,

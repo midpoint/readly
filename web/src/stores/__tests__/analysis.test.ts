@@ -1,0 +1,407 @@
+import { createPinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CLUSTER_THRESHOLDS, SETTING_KEYS } from "@readly/shared";
+import { api } from "@/api/client";
+import { MemoryMirror, createMirror, syncMirror, type Mirror, type MirrorRow } from "@/modules/idb";
+import { createAnalysisWorker } from "@/modules/worker-factory";
+import { sanitizeClusterPrefs, useAnalysisStore } from "@/stores/analysis";
+
+vi.mock("@/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/client")>();
+  return { ...actual, api: vi.fn() };
+});
+
+// 真实 MemoryMirror 保留(测试直接构造),仅把 createMirror/syncMirror 换成桩
+vi.mock("@/modules/idb", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/modules/idb")>();
+  return { ...actual, createMirror: vi.fn(), syncMirror: vi.fn() };
+});
+
+// 手写 worker 桩:vi.hoisted 让工厂在 vi.mock 提升后仍能拿到「当前用例」的桩实例
+const hoisted = vi.hoisted(() => ({ worker: null as FakeWorker | null }));
+
+vi.mock("@/modules/worker-factory", () => ({
+  createAnalysisWorker: vi.fn(() => hoisted.worker),
+}));
+
+class FakeWorker {
+  onmessage: ((e: MessageEvent) => void) | null = null;
+  posted: unknown[] = [];
+  postMessage(msg: unknown): void {
+    this.posted.push(msg);
+  }
+  terminate(): void {}
+  emit(msg: unknown): void {
+    this.onmessage?.({ data: msg } as MessageEvent);
+  }
+}
+
+const LS_KEY = "readly_cluster_prefs";
+const T1 = "2026-01-01T00:00:00.000Z";
+const T2 = "2026-01-02T00:00:00.000Z";
+const T3 = "2026-01-03T00:00:00.000Z";
+
+function row(id: number, publishedAt: string, overrides: Partial<MirrorRow> = {}): MirrorRow {
+  return {
+    id,
+    feedId: 1,
+    feedTitle: `源${id}`,
+    title: `标题${id}`,
+    url: null,
+    publishedAt,
+    excerpt: null,
+    content: `<p>${id}</p>`,
+    ...overrides,
+  };
+}
+
+// 三篇:镜像按 publishedAt 倒序返回 → 下标 0/1/2 依次为 id 3/2/1
+const ROWS: MirrorRow[] = [
+  row(1, T1, { title: "事件标题", feedTitle: "源A" }),
+  row(2, T2, { title: "无关文章", feedTitle: "源B" }),
+  row(3, T3, { title: "同一事件后续", feedTitle: "源C" }),
+];
+
+async function seededMirror(): Promise<MemoryMirror> {
+  const mirror = new MemoryMirror();
+  await mirror.putMany(ROWS);
+  return mirror;
+}
+
+// 走完整 init(mirror 已就绪),并排空 init 内部的两个 void 任务
+async function readyStore(mirror: Mirror): Promise<ReturnType<typeof useAnalysisStore>> {
+  vi.mocked(createMirror).mockResolvedValue(mirror);
+  const store = useAnalysisStore();
+  await store.init();
+  await vi.advanceTimersByTimeAsync(0);
+  return store;
+}
+
+// 连接失效的镜像:所有读操作抛 InvalidStateError(模拟 onversionchange 后旧连接被关闭)
+function closedMirror(counter: { calls: number }): Mirror {
+  return {
+    kind: "idb",
+    putMany: async () => ({ added: 0, total: 0 }),
+    count: async () => 0,
+    clear: async () => {},
+    deleteMany: async () => {},
+    getAllNewest: async () => {
+      counter.calls++;
+      throw new DOMException("database connection is closing", "InvalidStateError");
+    },
+  };
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  localStorage.clear();
+  vi.mocked(api).mockReset();
+  vi.mocked(api).mockResolvedValue({});
+  vi.mocked(createMirror).mockReset();
+  vi.mocked(syncMirror).mockReset();
+  vi.mocked(syncMirror).mockResolvedValue({ synced: 0, total: 0, exhausted: true });
+  vi.mocked(createAnalysisWorker).mockClear();
+  hoisted.worker = new FakeWorker();
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("sanitizeClusterPrefs", () => {
+  it("非法值回退默认,合法值原样保留", () => {
+    expect(sanitizeClusterPrefs({ scope: 250, level: "bogus" })).toEqual({ scope: 200, level: "normal" });
+    expect(sanitizeClusterPrefs(null)).toEqual({ scope: 200, level: "normal" });
+    expect(sanitizeClusterPrefs("junk")).toEqual({ scope: 200, level: "normal" });
+    expect(sanitizeClusterPrefs({ scope: 100, level: "strict" })).toEqual({ scope: 100, level: "strict" });
+  });
+});
+
+describe("analysis store", () => {
+  it("compute 把镜像前 scope 篇发给 worker,结果映射为 UiClusterGroup", async () => {
+    const mirror = await seededMirror();
+    const spy = vi.spyOn(mirror, "getAllNewest");
+    const store = await readyStore(mirror);
+
+    // 不 await 结果:compute 在 postMessage 后返回,computing 由 worker 消息复位
+    await store.compute();
+    expect(spy).toHaveBeenCalledWith(200);
+    expect(store.computing).toBe(true);
+
+    const worker = hoisted.worker!;
+    expect(worker.posted).toEqual([
+      {
+        type: "cluster",
+        requestId: 1,
+        threshold: CLUSTER_THRESHOLDS.normal,
+        items: [
+          { id: 3, title: "同一事件后续", excerpt: null, content: "<p>3</p>", publishedAt: T3 },
+          { id: 2, title: "无关文章", excerpt: null, content: "<p>2</p>", publishedAt: T2 },
+          { id: 1, title: "事件标题", excerpt: null, content: "<p>1</p>", publishedAt: T1 },
+        ],
+      },
+    ]);
+
+    worker.emit({ type: "progress", requestId: 1, ratio: 0.5 });
+    expect(store.progress).toBe(0.5);
+
+    // 组内成员下标(镜像顺序:0=id3、1=id2、2=id1),medoid 取 0,成员已按时间升序
+    worker.emit({ type: "result", requestId: 1, groups: [{ representative: 0, members: [2, 0] }] });
+    expect(store.computing).toBe(false);
+    expect(store.computeError).toBeNull();
+    expect(store.groups).toEqual([
+      {
+        key: 3,
+        title: "同一事件后续",
+        count: 2,
+        firstAt: T1,
+        lastAt: T3,
+        members: [
+          { id: 1, title: "事件标题", feedTitle: "源A", publishedAt: T1 },
+          { id: 3, title: "同一事件后续", feedTitle: "源C", publishedAt: T3 },
+        ],
+      },
+    ]);
+  });
+
+  it("镜像不足 2 篇:直接置空结果,不发 worker 消息", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([row(1, T1)]);
+    const store = await readyStore(mirror);
+
+    await store.compute();
+    expect(store.groups).toEqual([]);
+    expect(store.computing).toBe(false);
+    expect(hoisted.worker!.posted).toHaveLength(0);
+  });
+
+  it("worker 回 error:computeError 置位、computing 复位", async () => {
+    const store = await readyStore(await seededMirror());
+    await store.compute();
+
+    hoisted.worker!.emit({ type: "error", requestId: 1 });
+    expect(store.computeError).toBe("聚类计算失败");
+    expect(store.computing).toBe(false);
+    expect(store.groups).toBeNull();
+  });
+
+  it("updateClusterPrefs 写本地并防抖 PUT cluster_prefs", async () => {
+    const store = await readyStore(await seededMirror());
+    const puts = () =>
+      vi.mocked(api).mock.calls.filter(([p, o]) => p === "/api/settings" && o?.method === "PUT");
+
+    store.updateClusterPrefs({ scope: 300 });
+    expect(JSON.parse(localStorage.getItem(LS_KEY)!)).toEqual({ scope: 300, level: "normal" });
+    store.updateClusterPrefs({ level: "strict" });
+    expect(JSON.parse(localStorage.getItem(LS_KEY)!)).toEqual({ scope: 300, level: "strict" });
+    expect(puts()).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0]![1]!.body).toEqual({ kv: { [SETTING_KEYS.clusterPrefs]: { scope: 300, level: "strict" } } });
+  });
+
+  it("偏好本地优先:无本地时采用服务端 cluster_prefs,采用后不回写", async () => {
+    vi.mocked(api).mockResolvedValue({ [SETTING_KEYS.clusterPrefs]: { scope: 100, level: "strict" } });
+    const store = await readyStore(await seededMirror());
+    expect(store.clusterPrefs).toEqual({ scope: 100, level: "strict" });
+    // 服务端快照即 serverCopy:采用后 1 秒内不产生回写 PUT
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(
+      vi.mocked(api).mock.calls.filter(([p, o]) => p === "/api/settings" && o?.method === "PUT")
+    ).toHaveLength(0);
+
+    // 本地已有偏好:服务端值不得覆盖
+    localStorage.setItem(LS_KEY, JSON.stringify({ scope: 300, level: "loose" }));
+    setActivePinia(createPinia());
+    const second = await readyStore(await seededMirror());
+    expect(second.clusterPrefs).toEqual({ scope: 300, level: "loose" });
+  });
+
+  it("syncIncremental 调 syncMirror 一次,并拉取 /api/articles/mirror(limit 200)", async () => {
+    const mirror = await seededMirror();
+    const store = await readyStore(mirror);
+
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(syncMirror).mock.calls[0]![0]).toBe(mirror);
+    expect(store.syncState).toBe("done");
+
+    const fetchPage = vi.mocked(syncMirror).mock.calls[0]![1];
+    await fetchPage(null);
+    expect(vi.mocked(api)).toHaveBeenCalledWith("/api/articles/mirror", {
+      query: { cursor_id: undefined, limit: 200 },
+    });
+
+    // 顺序调用不互斥(守卫只挡并发),再次同步照常执行
+    await store.syncIncremental();
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2);
+  });
+
+  it("syncIncremental 失败置 syncState=error(不抛)", async () => {
+    const store = await readyStore(await seededMirror());
+    vi.mocked(syncMirror).mockRejectedValue(new Error("boom"));
+    await store.syncIncremental();
+    expect(store.syncState).toBe("error");
+  });
+
+  it("cancel 发 cancel 消息并把 computing 复位,迟到的 result 被丢弃", async () => {
+    const store = await readyStore(await seededMirror());
+    await store.compute();
+    expect(store.computing).toBe(true);
+    const worker = hoisted.worker!;
+
+    store.cancel();
+    expect(worker.posted.at(-1)).toEqual({ type: "cancel", requestId: 1 });
+    expect(store.computing).toBe(false);
+
+    // 取消是 UI 级丢弃:同名 requestId 的迟到结果不再落地
+    worker.emit({ type: "result", requestId: 1, groups: [{ representative: 0, members: [0, 1] }] });
+    expect(store.groups).toBeNull();
+    expect(store.computing).toBe(false);
+  });
+
+  it("镜像连接失效时重建一次并重试该操作", async () => {
+    const counter = { calls: 0 };
+    const broken = closedMirror(counter);
+    const healthy = await seededMirror();
+    let first = true;
+    vi.mocked(createMirror).mockImplementation(async () => {
+      if (first) {
+        first = false;
+        return broken;
+      }
+      return healthy;
+    });
+
+    const store = useAnalysisStore();
+    await store.init();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.mirrorKind).toBe("idb");
+
+    await store.compute();
+    expect(vi.mocked(createMirror)).toHaveBeenCalledTimes(2);
+    expect(store.mirrorKind).toBe("memory");
+    expect(counter.calls).toBe(1);
+    expect(store.computeError).toBeNull();
+    const msg = hoisted.worker!.posted[0] as { type: string; items: unknown[] };
+    expect(msg.type).toBe("cluster");
+    expect(msg.items).toHaveLength(3);
+  });
+
+  it("重建后仍失败:走既有 error 路径(computeError 置位、computing 复位)", async () => {
+    const counter = { calls: 0 };
+    vi.mocked(createMirror).mockResolvedValue(closedMirror(counter));
+    const store = useAnalysisStore();
+    await store.init();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await store.compute();
+    // init 1 次 + 重建 1 次;读操作:原调用 + 重试各 1 次
+    expect(vi.mocked(createMirror)).toHaveBeenCalledTimes(2);
+    expect(counter.calls).toBe(2);
+    expect(store.computeError).toBe("聚类计算失败");
+    expect(store.computing).toBe(false);
+    expect(store.groups).toBeNull();
+    expect(hoisted.worker!.posted).toHaveLength(0);
+  });
+
+  it("syncIncremental 遇镜像失效:重建一次并以新连接重试,最终 done", async () => {
+    const broken = closedMirror({ calls: 0 });
+    const healthy = await seededMirror();
+    let first = true;
+    vi.mocked(createMirror).mockImplementation(async () => {
+      if (first) {
+        first = false;
+        return broken;
+      }
+      return healthy;
+    });
+    // 桩:旧连接上的同步抛错(等价于真实 IdbMirror 连接关闭后抛 InvalidStateError)
+    vi.mocked(syncMirror).mockImplementation(async (m) => {
+      if (m === broken) throw new DOMException("database connection is closing", "InvalidStateError");
+      return { synced: 0, total: 0, exhausted: true };
+    });
+
+    const store = useAnalysisStore();
+    await store.init();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(createMirror)).toHaveBeenCalledTimes(2);
+    expect(store.mirrorKind).toBe("memory");
+    expect(store.syncState).toBe("done");
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2); // 原调用 + 重试
+  });
+
+  it("createAnalysisWorker 未就绪时不构造:compute 前不碰 Worker 工厂", async () => {
+    await readyStore(await seededMirror());
+    expect(vi.mocked(createAnalysisWorker)).not.toHaveBeenCalled();
+  });
+
+  it("syncIncremental 在途时复用同一 promise,完成后补跑一轮(触发不丢失)", async () => {
+    const mirror = await seededMirror();
+    vi.mocked(createMirror).mockResolvedValue(mirror);
+    const releases: (() => void)[] = [];
+    vi.mocked(syncMirror).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(() => resolve({ synced: 0, total: ROWS.length, exhausted: true }));
+        })
+    );
+
+    const store = useAnalysisStore();
+    await store.init(); // init 内部已触发第一轮(在途)
+    expect(store.syncState).toBe("syncing");
+
+    const p2 = store.syncIncremental(); // 在途再触发:复用同一轮
+    const p3 = store.syncIncremental(); // 重复触发仍复用
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(1); // 未新开一轮
+
+    releases.shift()!(); // 只完成第一轮
+    // 两个调用都由第一轮完成(若各自新开一轮,这里会因无第二个 release 而挂起)
+    await Promise.all([p2, p3]);
+    // 排队补跑:自动再触发一轮(多次触发合并,只补跑一次)
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2);
+    expect(store.syncState).toBe("syncing");
+
+    releases.shift()!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.syncState).toBe("done");
+    expect(vi.mocked(syncMirror)).toHaveBeenCalledTimes(2);
+  });
+
+  it("compute 把 content 截断到 500 字(与 worker 侧 buildDocText 口径一致)", async () => {
+    const long = "甲".repeat(1200);
+    const mirror = new MemoryMirror();
+    await mirror.putMany([row(1, T1, { content: long }), row(2, T2)]);
+    const store = await readyStore(mirror);
+
+    await store.compute();
+    const msg = hoisted.worker!.posted.at(-1) as { items: { id: number; content: string | null }[] };
+    const item = msg.items.find((i) => i.id === 1)!;
+    expect(item.content).toBe(long.slice(0, 500));
+    expect(msg.items.find((i) => i.id === 2)!.content).toBe("<p>2</p>");
+  });
+
+  it("镜像读取期间取消:读取返回后不再发送 cluster 消息", async () => {
+    const mirror = await seededMirror();
+    let releaseRead!: () => void;
+    vi.spyOn(mirror, "getAllNewest").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRead = () => resolve([...ROWS].reverse());
+        })
+    );
+    const store = await readyStore(mirror);
+
+    const pending = store.compute();
+    expect(store.computing).toBe(true);
+    store.cancel(); // 读取在途时取消
+    releaseRead();
+    await pending;
+
+    const clusterMsgs = hoisted.worker!.posted.filter((m) => (m as { type: string }).type === "cluster");
+    expect(clusterMsgs).toHaveLength(0);
+    expect(store.groups).toBeNull();
+    expect(store.computing).toBe(false);
+  });
+});

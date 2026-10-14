@@ -1,5 +1,5 @@
 import { createApp, nextTick, type App } from "vue";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia, type Pinia } from "pinia";
 import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArticleListItem } from "@readly/shared";
@@ -7,6 +7,7 @@ import { api } from "@/api/client";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
+import { useSettingsStore } from "@/stores/settings";
 import Inbox from "@/views/Inbox.vue";
 
 vi.mock("@/api/client", async (importOriginal) => {
@@ -50,7 +51,10 @@ async function flush(): Promise<void> {
   await nextTick();
 }
 
-async function mountInbox(initialPath: string): Promise<{ router: Router; container: HTMLElement }> {
+async function mountInbox(
+  initialPath: string,
+  pinia: Pinia = createPinia()
+): Promise<{ router: Router; container: HTMLElement }> {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: "/", component: Inbox }],
@@ -60,7 +64,7 @@ async function mountInbox(initialPath: string): Promise<{ router: Router; contai
   const container = document.createElement("div");
   document.body.appendChild(container);
   const app = createApp(Inbox);
-  app.use(createPinia());
+  app.use(pinia);
   app.use(router);
   app.mount(container);
   mounted = { app, container };
@@ -152,6 +156,34 @@ describe("Inbox 冷启动挂载", () => {
     await flush();
     // loaded 标志生效:filter 未变时不重复拉取(实际计数恒为 1,满足 ≤2)
     expect(articleQueries()).toHaveLength(1);
+  });
+});
+
+describe("?a= 深链打开即已读", () => {
+  it("默认偏好:深链打开未读文章 → 发出 PATCH isRead(与列表点击同语义)", async () => {
+    mockShortcutFlow([item(1, true), item(2, false)]);
+    const { container } = await mountInbox("/?a=2");
+    await flush();
+
+    expect(detailGets()).toEqual(["/api/articles/2"]);
+    expect(useReaderStore().article?.id).toBe(2);
+    expect(api).toHaveBeenCalledWith("/api/articles/2", { method: "PATCH", body: { isRead: true } });
+    expect(container.textContent).toContain("文章 2");
+  });
+
+  it("关闭 autoMarkReadOnOpen:深链打开不发出 PATCH", async () => {
+    mockShortcutFlow([item(1, true), item(2, false)]);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSettingsStore().updatePrefs({ autoMarkReadOnOpen: false });
+    await mountInbox("/?a=2", pinia);
+    await flush();
+
+    expect(detailGets()).toEqual(["/api/articles/2"]);
+    expect(useReaderStore().article?.id).toBe(2);
+    const patches = vi.mocked(api).mock.calls.filter(([, o]) => o?.method === "PATCH");
+    expect(patches).toHaveLength(0);
+    localStorage.removeItem("readly_prefs"); // updatePrefs 的本地写入不跨用例
   });
 });
 

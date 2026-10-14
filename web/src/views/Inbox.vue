@@ -9,6 +9,7 @@ import ReaderPane from "@/components/ReaderPane.vue";
 import ShortcutHelp from "@/components/ShortcutHelp.vue";
 import Sidebar from "@/components/Sidebar.vue";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
+import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useReaderStore } from "@/stores/reader";
@@ -43,7 +44,17 @@ async function applyRouteQuery(): Promise<void> {
   }
   const articleId = numParam(route.query.a);
   if (articleId !== null) {
-    if (articleId !== reader.article?.id) void reader.open(articleId).catch(() => undefined);
+    if (articleId !== reader.article?.id) {
+      // ?a= 深链打开与列表点击同语义:打开即按偏好标记已读
+      void reader
+        .open(articleId)
+        .then(() => {
+          if (!settings.prefs.autoMarkReadOnOpen) return;
+          const item = articles.items.find((i) => i.id === articleId);
+          if (item && !item.isRead) void articles.setState(articleId, { isRead: true }).catch(() => undefined);
+        })
+        .catch(() => undefined);
+    }
   } else if (reader.article) {
     reader.close();
   }
@@ -76,6 +87,8 @@ onMounted(async () => {
   // 文档级键盘监听:冷加载(未点击任意区域)即可用快捷键;输入框守卫在 onKey 内
   document.addEventListener("keydown", onKey);
   await feedsStore.load();
+  // 后台接线:镜像同步与聚类偏好就绪(失败静默,不阻塞首屏)
+  void useAnalysisStore().init().catch(() => undefined);
   void applyRouteQuery().catch(() => undefined);
 });
 

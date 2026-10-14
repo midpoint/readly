@@ -4,6 +4,7 @@ import type { ComponentPublicInstance } from "vue";
 import { useRouter } from "vue-router";
 import type { Feed } from "@readly/shared";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
+import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useSettingsStore } from "@/stores/settings";
@@ -90,6 +91,8 @@ async function refreshFeeds(): Promise<void> {
   } catch {
     // 重载失败静默
   }
+  // 刷新结果进入服务端后,增量同步进本地镜像(未初始化时 store 内部直接返回)
+  void useAnalysisStore().syncIncremental();
   // 短暂展示结果后还原(重复触发时重置计时)
   if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
@@ -217,6 +220,9 @@ async function confirmDelete(feed: Feed): Promise<void> {
       <button :class="navItem" @click="select('later')">
         <span>稍后读</span>
         <span v-if="stats?.laterTotal" class="text-xs text-neutral-500">{{ stats.laterTotal }}</span>
+      </button>
+      <button :class="navItem" @click="router.push('/events')">
+        <span>事件</span>
       </button>
     </nav>
     <div class="mt-4 flex-1 overflow-y-auto px-2 pb-4">
