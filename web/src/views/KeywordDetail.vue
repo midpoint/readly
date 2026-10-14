@@ -51,9 +51,9 @@ function fmtTime(iso: string): string {
           class="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800"
         >
           <button class="min-w-0 flex-1 truncate text-left text-sm hover:underline" @click="openArticle(h.id)">{{ h.title }}</button>
-          <span class="w-24 shrink-0 truncate text-xs text-neutral-500">{{ h.feedTitle }}</span>
-          <span class="w-24 shrink-0 text-xs text-neutral-500">{{ fmtTime(h.publishedAt) }}</span>
-          <span class="shrink-0 text-xs text-neutral-500">×{{ h.count }}</span>
+          <span class="w-24 shrink-0 truncate text-xs text-neutral-500 dark:text-neutral-400">{{ h.feedTitle }}</span>
+          <span class="w-24 shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{{ fmtTime(h.publishedAt) }}</span>
+          <span class="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">×{{ h.count }}</span>
         </li>
       </ul>
     </template>

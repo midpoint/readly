@@ -37,16 +37,27 @@ export function isRuleValid(rule: KeywordRule): boolean {
   return compile(rule) !== null;
 }
 
-export function findMatches(text: string, rule: KeywordRule): number[] {
+export interface MatchRange {
+  start: number;
+  end: number;
+}
+
+// 命中区间以 matchAll 的实际匹配(含正则/lookbehind/大小写折叠)为准:
+// 不能按关键词长度反推——切片后重匹配会丢失上下文(如 `(?<=@)\w+`)。
+export function findMatchRanges(text: string, rule: KeywordRule): MatchRange[] {
   const re = compile(rule);
   if (!re) return [];
-  const out: number[] = [];
+  const out: MatchRange[] = [];
   for (const m of text.matchAll(re)) {
     if (m[0].length === 0) break;
-    out.push(m.index);
+    out.push({ start: m.index, end: m.index + m[0].length });
     if (out.length >= MAX_MATCHES_PER_RULE) break;
   }
   return out;
+}
+
+export function findMatches(text: string, rule: KeywordRule): number[] {
+  return findMatchRanges(text, rule).map((r) => r.start);
 }
 
 export function htmlToText(html: string | null | undefined): string {

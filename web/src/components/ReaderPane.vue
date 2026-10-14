@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { highlightMatchesIn } from "@/modules/highlight";
 import { sanitizeArticleHtml } from "@/modules/render";
+import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
 import { useReaderStore } from "@/stores/reader";
 import { useSettingsStore } from "@/stores/settings";
@@ -10,6 +12,7 @@ const emit = defineEmits<{ close: [] }>();
 
 const reader = useReaderStore();
 const articles = useArticlesStore();
+const analysis = useAnalysisStore();
 const showThemePanel = ref(false);
 
 const showOriginal = ref(false);
@@ -24,6 +27,25 @@ watch(
   () => {
     showOriginal.value = false;
   }
+);
+
+// 渲染后高亮:只包裹已清洗 DOM 的文本节点(零 innerHTML 注入)。
+// v-html 重渲染(正文/全文切换、打开新文章)会清掉旧的 mark,
+// 由本 watch(html / 规则数 / 文章 id)在下一拍重贴;规则从本地/服务端异步就绪时同理由此覆盖。
+const articleBody = ref<HTMLElement | null>(null);
+
+function applyHighlights(): void {
+  const el = articleBody.value;
+  if (!el) return;
+  highlightMatchesIn(el, analysis.rules, { maxMarks: 300 });
+}
+
+watch(
+  () => [html.value, analysis.rules.length ?? 0, reader.article?.id] as const,
+  () => {
+    void nextTick(applyHighlights);
+  },
+  { immediate: true }
 );
 
 async function toggle(patch: { isRead?: boolean; isStarred?: boolean; isLater?: boolean }) {
@@ -116,7 +138,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
               {{ showOriginal ? "显示全文" : "显示摘要" }}
             </button>
           </div>
-          <article class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
+          <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>
         <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
