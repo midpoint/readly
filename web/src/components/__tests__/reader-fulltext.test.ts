@@ -27,7 +27,6 @@ let app: App | null = null;
 let host: HTMLElement | null = null;
 
 beforeEach(() => {
-  setActivePinia(createPinia());
   localStorage.clear();
   vi.mocked(api).mockReset();
   host = document.createElement("div");
@@ -46,11 +45,19 @@ async function mountWith(article: Record<string, unknown>) {
     if (path === "/api/proxy/html") return Promise.resolve({ html: "<html/>", finalUrl: BASE.url, truncated: false });
     return Promise.resolve({});
   });
+  // 同一用例内重复挂载:先卸载旧 app 并清空 host,避免双实例与 Vue 重复挂载警告
+  app?.unmount();
+  app = null;
+  host!.innerHTML = "";
+  // 单一 pinia:测试侧取的 store 与组件侧同库
+  const pinia = createPinia();
+  setActivePinia(pinia);
   const settings = useSettingsStore();
   settings.initLocal();
   settings.updateFetchPrefs({ auto: false });
   app = createApp(ReaderPane);
-  app.use(createPinia());
+  app.use(pinia);
+  setActivePinia(pinia);
   app.mount(host!);
   const reader = useReaderStore();
   await reader.open(1);

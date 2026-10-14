@@ -166,6 +166,15 @@ describe("fetchPrefs 切片", () => {
     expect(store.fetchPrefs).toEqual({ auto: false, minChars: 500 });
   });
 
+  it("resetPrefs 同时恢复抓取偏好", () => {
+    const store = useSettingsStore();
+    store.initLocal();
+    store.updateFetchPrefs({ auto: false, minChars: 900 });
+    store.resetPrefs();
+    expect(store.fetchPrefs).toEqual({ auto: true, minChars: 300 });
+    expect(JSON.parse(localStorage.getItem("readly_fetch_prefs")!).minChars).toBe(300);
+  });
+
   it("updateFetchPrefs 写本地并防抖推送(与阅读偏好同一 PUT 双键)", async () => {
     vi.mocked(api).mockResolvedValue({ ok: true });
     const store = useSettingsStore();

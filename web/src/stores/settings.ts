@@ -140,6 +140,7 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function resetPrefs(): void {
     prefs.value = { ...DEFAULT_READER_PREFS };
+    fetchPrefs.value = { ...DEFAULT_FETCH_PREFS };
   }
 
   async function pushRemote(): Promise<void> {

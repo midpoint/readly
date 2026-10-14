@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { fail, ok } from "../respond";
-import { fetchText } from "../lib/http";
+import { fetchText, type FetchTextResult } from "../lib/http";
 
 const proxy = new Hono<{ Bindings: Env }>();
 
@@ -23,7 +23,7 @@ export function decodeWithCharset(bytes: Uint8Array, contentType: string | null)
 proxy.get("/proxy/html", async (c) => {
   const raw = c.req.query("url");
   if (!raw) return fail(c, 400, "invalid_url", "缺少 url 参数");
-  let res;
+  let res: FetchTextResult;
   try {
     res = await fetchText(raw, {
       maxBytes: 3 * 1024 * 1024,

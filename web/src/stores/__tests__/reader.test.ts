@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/api/client";
+import { extractFromHtml } from "@/modules/extract";
 import { useReaderStore } from "@/stores/reader";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -60,6 +61,88 @@ describe("reader 全文抓取", () => {
     expect(vi.mocked(api).mock.calls.some(([p]) => p === "/api/proxy/html")).toBe(false);
     await reader.fetchFullText();
     expect(reader.article?.contentFull).toBe("<p>完整正文</p>");
+  });
+
+  it("连跳补抓:在途结果被丢弃后,落点文章按自动条件补抓完成", async () => {
+    const B_URL = "https://n.example.com/b";
+    let resolveProxy!: (v: unknown) => void;
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/articles/1") return Promise.resolve({ ...ARTICLE });
+      if (path === "/api/articles/2") return Promise.resolve({ ...ARTICLE, id: 2, title: "标题二", url: B_URL });
+      if (path === "/api/proxy/html") {
+        const url = (opts?.query as { url?: string } | undefined)?.url;
+        if (url === ARTICLE.url) return new Promise((resolve) => { resolveProxy = resolve; });
+        return Promise.resolve({ html: "<html>…</html>", finalUrl: url, truncated: false });
+      }
+      return Promise.resolve({});
+    });
+    const settings = useSettingsStore();
+    settings.initLocal();
+    const reader = useReaderStore();
+    await reader.open(1); // A 短文自动抓取,代理 promise 在途
+    await reader.open(2); // 在途期间连跳到 B(B 的自动抓取被全局限流挡住)
+    expect(reader.article?.id).toBe(2);
+    resolveProxy({ html: "<html>…</html>", finalUrl: ARTICLE.url, truncated: false });
+    await vi.waitFor(() => expect(reader.article?.contentFull).toBe("<p>完整正文</p>"));
+    const proxyUrls = vi.mocked(api).mock.calls
+      .filter(([p]) => p === "/api/proxy/html")
+      .map(([, o]) => (o?.query as { url: string }).url);
+    expect(proxyUrls).toEqual([ARTICLE.url, B_URL]);
+  });
+
+  it("在途失败且已切文:不写旧错误,落点文章仍补抓成功", async () => {
+    const B_URL = "https://n.example.com/b";
+    let rejectProxy!: (e: unknown) => void;
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/articles/1") return Promise.resolve({ ...ARTICLE });
+      if (path === "/api/articles/2") return Promise.resolve({ ...ARTICLE, id: 2, title: "标题二", url: B_URL });
+      if (path === "/api/proxy/html") {
+        const url = (opts?.query as { url?: string } | undefined)?.url;
+        if (url === ARTICLE.url) return new Promise((_res, rej) => { rejectProxy = rej; });
+        return Promise.resolve({ html: "<html>…</html>", finalUrl: url, truncated: false });
+      }
+      return Promise.resolve({});
+    });
+    const settings = useSettingsStore();
+    settings.initLocal();
+    const reader = useReaderStore();
+    await reader.open(1);
+    await reader.open(2);
+    rejectProxy(new Error("抓取超时"));
+    await vi.waitFor(() => expect(reader.article?.contentFull).toBe("<p>完整正文</p>"));
+    // 旧文章的失败不得挂到新文章头部
+    expect(reader.fullTextError).toBeNull();
+  });
+
+  it("代理截断时仍持久化并提示「页面较大,仅提取到部分内容」", async () => {
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/articles/1") return Promise.resolve({ ...ARTICLE });
+      if (path === "/api/proxy/html") return Promise.resolve({ html: "<html>…</html>", finalUrl: ARTICLE.url, truncated: true });
+      if (path === "/api/articles/1/fulltext" && opts?.method === "POST") return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    const settings = useSettingsStore();
+    settings.initLocal();
+    const reader = useReaderStore();
+    await reader.open(1);
+    await vi.waitFor(() => expect(reader.article?.contentFull).toBe("<p>完整正文</p>"));
+    expect(reader.fullTextNote).toBe("页面较大,仅提取到部分内容");
+    expect(vi.mocked(api)).toHaveBeenCalledWith("/api/articles/1/fulltext", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("绝对化基准取重定向后的终址(res.finalUrl)", async () => {
+    const FINAL_URL = "https://redirect.example.com/final";
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/articles/1") return Promise.resolve({ ...ARTICLE });
+      if (path === "/api/proxy/html") return Promise.resolve({ html: "<html>…</html>", finalUrl: FINAL_URL, truncated: false });
+      return Promise.resolve({});
+    });
+    const settings = useSettingsStore();
+    settings.initLocal();
+    const reader = useReaderStore();
+    await reader.open(1);
+    await vi.waitFor(() => expect(reader.article?.contentFull).toBe("<p>完整正文</p>"));
+    expect(vi.mocked(extractFromHtml)).toHaveBeenCalledWith("<html>…</html>", FINAL_URL);
   });
 
   it("抓取失败写入 fullTextError", async () => {

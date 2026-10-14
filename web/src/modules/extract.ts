@@ -36,6 +36,8 @@ export function extractFromHtml(pageHtml: string, pageUrl: string): ExtractResul
   if (!parsed || !parsed.content) throw new Error("无法提取正文");
   // 先过唯一渲染清洗点,再做 URL 绝对化(清洗含 data-src→src 提升,顺序不可反)
   const clean = absoluteize(sanitizeArticleHtml(parsed.content), pageUrl);
+  // 清洗后为空(内容全为被禁标签等):与解析失败同一条错误文案,不渲染空正文
+  if (!clean.trim()) throw new Error("无法提取正文");
   const text = (parsed.textContent ?? "").replace(/\s+/g, " ").trim();
   return { title: parsed.title ?? null, html: clean, textLength: text.length };
 }

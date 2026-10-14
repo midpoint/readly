@@ -34,6 +34,20 @@ describe("extractFromHtml", () => {
     expect(() => extractFromHtml(NO_CONTENT, "https://x.example.com/")).toThrow(/无法提取正文/);
   });
 
+  it("恶意载荷被清洗:输出不含 onerror / javascript:", () => {
+    const EVIL = `<!doctype html><html><head><title>恶意页</title></head><body><article>
+      <h1>恶意载荷</h1>
+      <p>正文段落,提供足量文本让提取器认定这段是文章主体而不是导航或边栏,继续补充文字凑长度以保证提取稳定。</p>
+      <img src="/img/a.png" onerror="alert(1)" alt="坏图">
+      <a href="javascript:alert(document.cookie)">点我</a>
+    </article></body></html>`;
+    const r = extractFromHtml(EVIL, "https://news.example.com/post/3");
+    expect(r.html).not.toContain("onerror");
+    expect(r.html.toLowerCase()).not.toContain("javascript:");
+    // 正常内容仍保留(清洗不是「清空」)
+    expect(r.html).toContain("恶意载荷");
+  });
+
   it("顺序不可反:清洗提升 data-src→src 之后再绝对化", () => {
     const LAZY = `<!doctype html><html><body><article>
       <h1>惰性加载图</h1>

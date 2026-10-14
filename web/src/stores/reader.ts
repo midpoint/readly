@@ -47,8 +47,8 @@ export const useReaderStore = defineStore("reader", () => {
     fullTextError.value = null;
     fullTextNote.value = null;
     try {
-      const res = await api<{ html: string }>("/api/proxy/html", { query: { url: a.url } });
-      const result = extractFromHtml(res.html, a.url);
+      const res = await api<{ html: string; finalUrl: string; truncated: boolean }>("/api/proxy/html", { query: { url: a.url } });
+      const result = extractFromHtml(res.html, res.finalUrl);
       if (article.value?.id !== a.id) return; // 中途切文,丢弃结果
       if (result.html.length > 512 * 1024) {
         article.value.contentFull = result.html;
@@ -56,6 +56,7 @@ export const useReaderStore = defineStore("reader", () => {
         return;
       }
       article.value.contentFull = result.html;
+      if (res.truncated) fullTextNote.value = "页面较大,仅提取到部分内容";
       article.value.extractedAt = new Date().toISOString();
       useArticlesStore().patchItemLocally(a.id, { hasFullText: true });
       try {
@@ -64,10 +65,15 @@ export const useReaderStore = defineStore("reader", () => {
         fullTextNote.value = "全文已提取,但保存失败(本次仅本地可见)";
       }
     } catch (e) {
+      if (article.value?.id !== a.id) throw e; // 已切文:旧文章的失败不挂到新文章头部
       fullTextError.value = e instanceof Error ? e.message : "抓取失败";
       throw e;
     } finally {
       fullTextLoading.value = false;
+      // 抓取期间用户已切到其它文章:该文仍需按自动条件补抓(串行,无风暴)
+      if (article.value !== null && article.value.id !== a.id) {
+        maybeAutoExtract();
+      }
     }
   }
 

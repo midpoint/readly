@@ -52,5 +52,6 @@ describe("GET /api/proxy/html", () => {
   it("缺少 url 参数 400", async () => {
     const res = await apiFetch("/api/proxy/html");
     expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("invalid_url");
   });
 });
