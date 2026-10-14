@@ -351,6 +351,12 @@ async function confirmDelete(feed: Feed): Promise<void> {
         快捷键
       </button>
       <button
+        class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
+        @click="router.push('/settings')"
+      >
+        设置
+      </button>
+      <button
         class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-60 dark:hover:bg-neutral-800"
         :disabled="refreshStatus === 'busy'"
         @click="refreshFeeds"

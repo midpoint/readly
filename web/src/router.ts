@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: "/events", name: "events", component: () => import("@/views/Events.vue") },
     { path: "/keywords", name: "keywords", component: () => import("@/views/Keywords.vue") },
     { path: "/keywords/:id", name: "keyword-detail", component: () => import("@/views/KeywordDetail.vue") },
+    { path: "/settings", name: "settings", component: () => import("@/views/Settings.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

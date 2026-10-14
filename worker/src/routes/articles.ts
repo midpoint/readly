@@ -214,4 +214,30 @@ articles.post("/articles/:id/fulltext", async (c) => {
   return ok(c, { ok: true });
 });
 
+articles.post("/articles/:id/ai-summary", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json<{ summary?: unknown }>().catch(() => ({}) as { summary?: unknown });
+  const s = body.summary;
+  let serialized: string | null = null;
+  if (s !== null && s !== undefined) {
+    if (
+      typeof s !== "object" ||
+      typeof (s as { oneLiner?: unknown }).oneLiner !== "string" ||
+      !Array.isArray((s as { points?: unknown }).points) ||
+      (s as { points: unknown[] }).points.some((p) => typeof p !== "string")
+    ) {
+      return fail(c, 400, "invalid_summary", "summary 形状非法");
+    }
+    serialized = JSON.stringify({
+      oneLiner: (s as { oneLiner: string }).oneLiner.slice(0, 500),
+      points: (s as { points: string[] }).points.slice(0, 8).map((p) => p.slice(0, 500)),
+    });
+    // 经裁剪后不可达(上限 1×500 + 8×500 字符),保留为防御
+    if (serialized.length > 32 * 1024) return fail(c, 413, "too_large", "摘要内容过大");
+  }
+  const res = await c.env.DB.prepare("UPDATE articles SET ai_summary = ? WHERE id = ?").bind(serialized, id).run();
+  if (!res.meta.changes) return fail(c, 404, "not_found", "文章不存在");
+  return ok(c, { ok: true });
+});
+
 export default articles;
