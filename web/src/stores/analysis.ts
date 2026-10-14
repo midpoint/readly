@@ -101,6 +101,7 @@ export const useAnalysisStore = defineStore("analysis", () => {
   let pendingSync = false;
   let hitsTimer: ReturnType<typeof setTimeout> | null = null;
   let hitsRequestId = 0;
+  let hitsPendingRecalc = false; // 计算在途期间的规则变更:落地后补跑一轮(不丢失)
   let lastHitsDocs: MirrorRow[] = []; // 命中计算时的镜像快照,供 hitsByRule 关联元数据
 
   function hitsFor(articleId: number): HitEntry[] {
@@ -281,6 +282,7 @@ export const useAnalysisStore = defineStore("analysis", () => {
           rulesInvalid.value = msg.result.invalidRuleIds;
           applyHits(msg.result, lastHitsDocs);
           hitsState.value = "done";
+          flushHitsRecalc();
           return;
         }
         if (msg.type === "error") {
@@ -290,6 +292,7 @@ export const useAnalysisStore = defineStore("analysis", () => {
             computing.value = false;
           } else if (msg.requestId === hitsRequestId) {
             hitsState.value = "error";
+            flushHitsRecalc();
           }
           return;
         }
@@ -314,11 +317,23 @@ export const useAnalysisStore = defineStore("analysis", () => {
     }, HITS_DEBOUNCE_MS);
   }
 
+  // 计算在途期间的规则变更不并发:置 dirty 标记,当前一轮落地(done/error)后补跑一次
+  function flushHitsRecalc(): void {
+    if (!hitsPendingRecalc) return;
+    hitsPendingRecalc = false;
+    scheduleHits();
+  }
+
   async function computeHits(): Promise<void> {
-    if (!mirror || hitsState.value === "computing") return;
+    if (!mirror) return;
+    if (hitsState.value === "computing") {
+      hitsPendingRecalc = true;
+      return;
+    }
     if (rules.value.filter((r) => r.enabled).length === 0) {
       hits.value = {};
       hitsByRule.value = {};
+      rulesInvalid.value = [];
       hitsState.value = "done";
       return;
     }
@@ -341,6 +356,7 @@ export const useAnalysisStore = defineStore("analysis", () => {
       // 结果在 onmessage 的 keywordsResult 分支落地
     } catch {
       hitsState.value = "error";
+      flushHitsRecalc(); // 错误也允许一次补跑(dirty 标记消费即止,不会循环)
     }
   }
 

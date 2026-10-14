@@ -521,4 +521,84 @@ describe("关键词规则与命中", () => {
     expect(store.hitsFor(1)).toEqual([]);
     expect(store.hitsFor(999)).toEqual([]);
   });
+
+  it("计算在途时的规则变更:不并发发送,当前一轮落地后补跑(变更不丢失)", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([
+      row(1, T1, { title: "OpenAI 发布", content: "<p>openai</p>" }),
+      row(2, T2, { title: "竞品分析", content: "<p>openai 也够用</p>" }),
+    ]);
+    const store = await readyStore(mirror);
+    store.addRule(OPENAI_RULE); // 第一次变更
+    await vi.advanceTimersByTimeAsync(400);
+    const first = postedKeywords()[0]!;
+    expect(postedKeywords()).toHaveLength(1);
+    expect(store.hitsState).toBe("computing"); // 在途:seam 不自动回
+
+    store.updateRule(first.rules[0]!.id, { caseSensitive: true }); // 在途期间的第二次变更
+    await vi.advanceTimersByTimeAsync(400); // 防抖到期,但计算在途 → 不并发发送
+    expect(postedKeywords()).toHaveLength(1);
+    expect(store.hitsState).toBe("computing");
+
+    // 第一条结果落地 → 补跑;推进防抖后发出第二条(携带变更后的规则集)
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: first.requestId, result: matchDocs(first.docs, first.rules) });
+    expect(store.hitsState).toBe("done");
+    expect(store.hits[1]).toEqual([{ ruleId: first.rules[0]!.id, count: 2 }]); // 旧规则:大小写不敏感,标题+正文
+    await vi.advanceTimersByTimeAsync(400);
+    const msgs = postedKeywords();
+    expect(msgs).toHaveLength(2);
+    const second = msgs[1]!;
+    expect(second.requestId).not.toBe(first.requestId);
+    expect(second.rules).toEqual([{ ...OPENAI_RULE, id: first.rules[0]!.id, name: "openai", caseSensitive: true }]);
+
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: second.requestId, result: matchDocs(second.docs, second.rules) });
+    // 命中反映最终规则集:大小写敏感后标题 "OpenAI" 不再命中,仅正文 1 处
+    expect(store.hits[1]).toEqual([{ ruleId: first.rules[0]!.id, count: 1 }]);
+    await vi.advanceTimersByTimeAsync(400); // 补跑已消费,不再有第三条
+    expect(postedKeywords()).toHaveLength(2);
+  });
+
+  it("在途计算回 error:同样补跑一次(dirty 标记消费即止)", async () => {
+    const store = await readyStore(await seededMirror());
+    store.addRule(OPENAI_RULE);
+    await vi.advanceTimersByTimeAsync(400);
+    const first = postedKeywords()[0]!;
+
+    store.updateRule(first.rules[0]!.id, { name: "改名" });
+    await vi.advanceTimersByTimeAsync(400); // 在途 → 仅置 dirty
+    expect(postedKeywords()).toHaveLength(1);
+
+    hoisted.worker!.emit({ type: "error", requestId: first.requestId });
+    expect(store.hitsState).toBe("error");
+    await vi.advanceTimersByTimeAsync(400); // 错误后补跑一次
+    const msgs = postedKeywords();
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1]!.rules[0]!.name).toBe("改名");
+    expect(msgs[1]!.requestId).not.toBe(first.requestId);
+  });
+
+  it("无 enabled 规则时清空命中并复位 rulesInvalid(不发消息)", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([row(1, T1, { title: "OpenAI 发布", content: "<p>openai</p>" })]);
+    const store = await readyStore(mirror);
+    store.addRule(OPENAI_RULE);
+    const goodId = store.rules[0]!.id;
+    store.addRule({ ...OPENAI_RULE, keyword: "([", isRegex: true, name: "坏正则" }); // 编译失败 → worker 回报 invalidRuleIds
+    const badId = store.rules[1]!.id;
+
+    await vi.advanceTimersByTimeAsync(400);
+    const msg = postedKeywords()[0]!;
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: msg.requestId, result: matchDocs(msg.docs, msg.rules) });
+    expect(store.hits[1]).toEqual([{ ruleId: goodId, count: 2 }]);
+    expect(store.rulesInvalid).toEqual([badId]);
+
+    store.updateRule(goodId, { enabled: false });
+    store.updateRule(badId, { enabled: false });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.hits).toEqual({});
+    expect(store.hitsByRule).toEqual({});
+    expect(store.rulesInvalid).toEqual([]); // 清空分支复位
+    expect(store.hitsState).toBe("done");
+    expect(postedKeywords()).toHaveLength(1); // 清空分支不发消息
+  });
 });
