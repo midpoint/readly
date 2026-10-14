@@ -86,6 +86,20 @@ describe("articles API", () => {
     expect(detail.extractedAt).toBeTruthy();
   });
 
+  it("ai-summary 写入与清除", async () => {
+    const { ids } = await seed();
+    const put = await apiFetch(`/api/articles/${ids[0]}/ai-summary`, {
+      method: "POST",
+      body: { summary: { oneLiner: "一句话", points: ["a", "b"] } },
+    });
+    expect(put.status).toBe(200);
+    const detail = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { aiSummary: { oneLiner: string } | null };
+    expect(detail.aiSummary?.oneLiner).toBe("一句话");
+    await apiFetch(`/api/articles/${ids[0]}/ai-summary`, { method: "POST", body: { summary: null } });
+    const cleared = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { aiSummary: null };
+    expect(cleared.aiSummary).toBeNull();
+  });
+
   it("镜像接口翻页且不含 ai 字段", async () => {
     await seed();
     const page = (await (await apiFetch("/api/articles/mirror?limit=3")).json()) as { items: { id: number }[]; nextCursorId: number | null };
