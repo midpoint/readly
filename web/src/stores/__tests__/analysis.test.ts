@@ -1,8 +1,9 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CLUSTER_THRESHOLDS, SETTING_KEYS } from "@readly/shared";
+import { CLUSTER_THRESHOLDS, SETTING_KEYS, type KeywordRule } from "@readly/shared";
 import { api } from "@/api/client";
 import { MemoryMirror, createMirror, syncMirror, type Mirror, type MirrorRow } from "@/modules/idb";
+import { matchDocs, type MatchDoc } from "@/modules/keywords";
 import { createAnalysisWorker } from "@/modules/worker-factory";
 import { sanitizeClusterPrefs, useAnalysisStore } from "@/stores/analysis";
 
@@ -199,7 +200,13 @@ describe("analysis store", () => {
 
     await vi.advanceTimersByTimeAsync(1100);
     expect(puts()).toHaveLength(1);
-    expect(puts()[0]![1]!.body).toEqual({ kv: { [SETTING_KEYS.clusterPrefs]: { scope: 300, level: "strict" } } });
+    // 计划 05 起为单次 kv 双键(cluster_prefs + keyword_rules 各自基线比对),cluster 断言语义不变
+    expect(puts()[0]![1]!.body).toEqual({
+      kv: {
+        [SETTING_KEYS.clusterPrefs]: { scope: 300, level: "strict" },
+        [SETTING_KEYS.keywordRules]: [],
+      },
+    });
   });
 
   it("偏好本地优先:无本地时采用服务端 cluster_prefs,采用后不回写", async () => {
@@ -403,5 +410,196 @@ describe("analysis store", () => {
     expect(clusterMsgs).toHaveLength(0);
     expect(store.groups).toBeNull();
     expect(store.computing).toBe(false);
+  });
+});
+
+const RULES_LS_KEY = "readly_keyword_rules";
+
+const OPENAI_RULE: Omit<KeywordRule, "id"> = {
+  name: "",
+  keyword: "openai",
+  isRegex: false,
+  caseSensitive: false,
+  color: "#f59e0b",
+  enabled: true,
+};
+
+interface PostedKeywords {
+  type: "keywords";
+  requestId: number;
+  docs: MatchDoc[];
+  rules: KeywordRule[];
+}
+
+function postedKeywords(): PostedKeywords[] {
+  return hoisted.worker!.posted.filter((m) => (m as { type: string }).type === "keywords") as PostedKeywords[];
+}
+
+describe("关键词规则与命中", () => {
+  it("sanitizeKeywordRules:过滤非法形状、上限 100、id 去重(名称回退关键词/颜色校验/enabled 语义)", async () => {
+    const { sanitizeKeywordRules } = await import("@/stores/analysis");
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      id: `r${i}`, name: `n${i}`, keyword: "x", isRegex: false, caseSensitive: false, color: "#3b82f6", enabled: true,
+    }));
+    expect(sanitizeKeywordRules(many)).toHaveLength(100);
+    expect(sanitizeKeywordRules([{ id: "a" }, many[0], many[0]])).toHaveLength(1); // 非法形状丢弃 + 去重
+    expect(sanitizeKeywordRules("junk")).toEqual([]);
+
+    // 名称回退关键词、非法颜色回退默认、enabled 仅显式 false 关闭、布尔缺省为 false
+    expect(sanitizeKeywordRules([{ id: "a", keyword: "  Open AI  ", color: "red", enabled: false }])).toEqual([
+      { id: "a", name: "Open AI", keyword: "Open AI", isRegex: false, caseSensitive: false, color: "#3b82f6", enabled: false },
+    ]);
+    expect(sanitizeKeywordRules([{ id: "b", keyword: "x" }])[0]!.enabled).toBe(true);
+  });
+
+  it("addRule/updateRule/removeRule 写本地并触发 keyword_rules 防抖 PUT(与 cluster_prefs 同一 PUT)", async () => {
+    const store = await readyStore(await seededMirror());
+    const puts = () => vi.mocked(api).mock.calls.filter(([p, o]) => p === "/api/settings" && o?.method === "PUT");
+    const lsRules = () => JSON.parse(localStorage.getItem(RULES_LS_KEY)!) as KeywordRule[];
+
+    store.addRule(OPENAI_RULE); // name 为空 → 回退关键词
+    const id = store.rules[0]!.id;
+    expect(store.rules[0]!.name).toBe("openai");
+    expect(lsRules()).toEqual(store.rules); // watch flush sync:本地即时落盘
+
+    store.updateRule(id, { name: "OpenAI 动态", enabled: false });
+    expect(store.rules[0]!.name).toBe("OpenAI 动态");
+    expect(store.rules[0]!.enabled).toBe(false);
+    expect(lsRules()).toEqual(store.rules);
+    expect(puts()).toHaveLength(0); // 防抖未到期
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(puts()).toHaveLength(1);
+    const kv = (puts()[0]![1]!.body as { kv: Record<string, unknown> }).kv;
+    expect(kv[SETTING_KEYS.keywordRules]).toEqual(store.rules);
+    expect(kv[SETTING_KEYS.clusterPrefs]).toEqual({ scope: 200, level: "normal" }); // 双键同 PUT
+
+    store.removeRule(id);
+    expect(lsRules()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(puts()).toHaveLength(2);
+    expect((puts()[1]![1]!.body as { kv: Record<string, unknown> }).kv[SETTING_KEYS.keywordRules]).toEqual([]);
+  });
+
+  it("同步完成后自动算命中:worker 收 keywords 消息并按 docs 回传,hits/hitsByRule 落地", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([
+      row(1, T1, { title: "OpenAI 发布新模型", content: "<p>openai 真香</p>" }),
+      row(2, T2, { title: "竞品分析", content: "<p>openai 才是关键</p>" }),
+    ]);
+    const store = await readyStore(mirror); // init 内同步完成 → 防抖 300ms 后自动算
+    store.addRule(OPENAI_RULE);
+    const ruleId = store.rules[0]!.id;
+
+    expect(postedKeywords()).toHaveLength(0); // 防抖未到期不发
+    await vi.advanceTimersByTimeAsync(400);
+    const msgs = postedKeywords();
+    expect(msgs).toHaveLength(1);
+    const msg = msgs[0]!;
+    expect(msg.requestId).toBeGreaterThanOrEqual(1_000_000); // 关键词通道独立高位 id 空间,与聚类 activeRequest 不相交
+    expect(msg.rules).toEqual([{ ...OPENAI_RULE, id: ruleId, name: "openai" }]);
+    expect(msg.docs.map((d) => d.id)).toEqual([2, 1]); // 镜像时间倒序
+    expect(msg.docs.find((d) => d.id === 1)!.text).toBe("openai 真香"); // text=htmlToText(content)
+    expect(store.hitsState).toBe("computing");
+
+    // seam 手写回传:以真实 matchDocs 跑同一 payload(等价于 worker 内计算),结果落地
+    const result = matchDocs(msg.docs, msg.rules);
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: msg.requestId, result });
+    expect(store.hitsState).toBe("done");
+    expect(store.rulesInvalid).toEqual([]);
+    expect(store.hits[1]).toEqual([{ ruleId, count: 2 }]); // 标题 + 正文各 1 处
+    expect(store.hits[2]).toEqual([{ ruleId, count: 1 }]);
+    expect(store.hitsFor(1)).toEqual([{ ruleId, count: 2 }]);
+    // hitsByRule 元数据取镜像快照(标题/来源/时间),按 publishedAt 倒序
+    expect(store.hitsByRule[ruleId]).toEqual([
+      { id: 2, title: "竞品分析", feedTitle: "源2", publishedAt: T2, count: 1 },
+      { id: 1, title: "OpenAI 发布新模型", feedTitle: "源1", publishedAt: T1, count: 2 },
+    ]);
+  });
+
+  it("hitsFor 无命中返回空数组", async () => {
+    const store = await readyStore(await seededMirror());
+    expect(store.hitsFor(1)).toEqual([]);
+    expect(store.hitsFor(999)).toEqual([]);
+  });
+
+  it("计算在途时的规则变更:不并发发送,当前一轮落地后补跑(变更不丢失)", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([
+      row(1, T1, { title: "OpenAI 发布", content: "<p>openai</p>" }),
+      row(2, T2, { title: "竞品分析", content: "<p>openai 也够用</p>" }),
+    ]);
+    const store = await readyStore(mirror);
+    store.addRule(OPENAI_RULE); // 第一次变更
+    await vi.advanceTimersByTimeAsync(400);
+    const first = postedKeywords()[0]!;
+    expect(postedKeywords()).toHaveLength(1);
+    expect(store.hitsState).toBe("computing"); // 在途:seam 不自动回
+
+    store.updateRule(first.rules[0]!.id, { caseSensitive: true }); // 在途期间的第二次变更
+    await vi.advanceTimersByTimeAsync(400); // 防抖到期,但计算在途 → 不并发发送
+    expect(postedKeywords()).toHaveLength(1);
+    expect(store.hitsState).toBe("computing");
+
+    // 第一条结果落地 → 补跑;推进防抖后发出第二条(携带变更后的规则集)
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: first.requestId, result: matchDocs(first.docs, first.rules) });
+    expect(store.hitsState).toBe("done");
+    expect(store.hits[1]).toEqual([{ ruleId: first.rules[0]!.id, count: 2 }]); // 旧规则:大小写不敏感,标题+正文
+    await vi.advanceTimersByTimeAsync(400);
+    const msgs = postedKeywords();
+    expect(msgs).toHaveLength(2);
+    const second = msgs[1]!;
+    expect(second.requestId).not.toBe(first.requestId);
+    expect(second.rules).toEqual([{ ...OPENAI_RULE, id: first.rules[0]!.id, name: "openai", caseSensitive: true }]);
+
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: second.requestId, result: matchDocs(second.docs, second.rules) });
+    // 命中反映最终规则集:大小写敏感后标题 "OpenAI" 不再命中,仅正文 1 处
+    expect(store.hits[1]).toEqual([{ ruleId: first.rules[0]!.id, count: 1 }]);
+    await vi.advanceTimersByTimeAsync(400); // 补跑已消费,不再有第三条
+    expect(postedKeywords()).toHaveLength(2);
+  });
+
+  it("在途计算回 error:同样补跑一次(dirty 标记消费即止)", async () => {
+    const store = await readyStore(await seededMirror());
+    store.addRule(OPENAI_RULE);
+    await vi.advanceTimersByTimeAsync(400);
+    const first = postedKeywords()[0]!;
+
+    store.updateRule(first.rules[0]!.id, { name: "改名" });
+    await vi.advanceTimersByTimeAsync(400); // 在途 → 仅置 dirty
+    expect(postedKeywords()).toHaveLength(1);
+
+    hoisted.worker!.emit({ type: "error", requestId: first.requestId });
+    expect(store.hitsState).toBe("error");
+    await vi.advanceTimersByTimeAsync(400); // 错误后补跑一次
+    const msgs = postedKeywords();
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1]!.rules[0]!.name).toBe("改名");
+    expect(msgs[1]!.requestId).not.toBe(first.requestId);
+  });
+
+  it("无 enabled 规则时清空命中并复位 rulesInvalid(不发消息)", async () => {
+    const mirror = new MemoryMirror();
+    await mirror.putMany([row(1, T1, { title: "OpenAI 发布", content: "<p>openai</p>" })]);
+    const store = await readyStore(mirror);
+    store.addRule(OPENAI_RULE);
+    const goodId = store.rules[0]!.id;
+    store.addRule({ ...OPENAI_RULE, keyword: "([", isRegex: true, name: "坏正则" }); // 编译失败 → worker 回报 invalidRuleIds
+    const badId = store.rules[1]!.id;
+
+    await vi.advanceTimersByTimeAsync(400);
+    const msg = postedKeywords()[0]!;
+    hoisted.worker!.emit({ type: "keywordsResult", requestId: msg.requestId, result: matchDocs(msg.docs, msg.rules) });
+    expect(store.hits[1]).toEqual([{ ruleId: goodId, count: 2 }]);
+    expect(store.rulesInvalid).toEqual([badId]);
+
+    store.updateRule(goodId, { enabled: false });
+    store.updateRule(badId, { enabled: false });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.hits).toEqual({});
+    expect(store.hitsByRule).toEqual({});
+    expect(store.rulesInvalid).toEqual([]); // 清空分支复位
+    expect(store.hitsState).toBe("done");
+    expect(postedKeywords()).toHaveLength(1); // 清空分支不发消息
   });
 });

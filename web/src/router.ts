@@ -11,6 +11,8 @@ export const router = createRouter({
     { path: "/", name: "inbox", component: Inbox },
     { path: "/add", name: "add", component: AddFeed },
     { path: "/events", name: "events", component: () => import("@/views/Events.vue") },
+    { path: "/keywords", name: "keywords", component: () => import("@/views/Keywords.vue") },
+    { path: "/keywords/:id", name: "keyword-detail", component: () => import("@/views/KeywordDetail.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

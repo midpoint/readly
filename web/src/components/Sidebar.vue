@@ -224,6 +224,9 @@ async function confirmDelete(feed: Feed): Promise<void> {
       <button :class="navItem" @click="router.push('/events')">
         <span>事件</span>
       </button>
+      <button :class="navItem" @click="router.push('/keywords')">
+        <span>关键词</span>
+      </button>
     </nav>
     <div class="mt-4 flex-1 overflow-y-auto px-2 pb-4">
       <template v-for="cat in visibleCategories" :key="cat.id">
