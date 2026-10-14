@@ -20,6 +20,11 @@ function onSave(patch: Omit<AiProvider, "id">): void {
   if (editing.value) ai.updateProvider(editing.value.id, patch);
   else ai.addProvider(patch);
 }
+
+function onDelete(p: AiProvider): void {
+  if (!window.confirm(`删除服务商「${p.name}」?(未开启云同步时其密钥将永久丢失)`)) return;
+  ai.removeProvider(p.id);
+}
 </script>
 
 <template>
@@ -56,7 +61,7 @@ function onSave(patch: Omit<AiProvider, "id">): void {
           <span v-if="p.useProxy" class="shrink-0 rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">代理</span>
           <span v-if="p.apiKey" class="shrink-0 text-xs text-neutral-400 dark:text-neutral-500">已存密钥</span>
           <button data-provider-edit class="shrink-0 rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="editing = p">编辑</button>
-          <button data-provider-delete class="shrink-0 rounded-md px-2 py-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800" @click="ai.removeProvider(p.id)">删除</button>
+          <button data-provider-delete class="shrink-0 rounded-md px-2 py-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800" @click="onDelete(p)">删除</button>
         </div>
       </div>
 

@@ -79,6 +79,7 @@ function save(): void {
         <input v-model="useProxy" data-provider-proxy type="checkbox" class="accent-[var(--accent)]" />
         经 Worker 代理转发(供应商禁止浏览器直连时启用)
       </label>
+      <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">代理模式不允许访问内网地址。</p>
       <div class="mt-5 flex justify-end gap-2">
         <button class="rounded-lg px-3 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="emit('close')">取消</button>
         <button data-provider-save :disabled="!canSave" class="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-sm text-white disabled:opacity-50" @click="save">保存</button>

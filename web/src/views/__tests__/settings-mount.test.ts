@@ -164,16 +164,26 @@ describe("Settings 挂载", () => {
     expect(container.querySelector("[data-provider-row]")!.textContent).toContain("updated-model");
   });
 
-  it("删除:点 data-provider-delete → 行消失", async () => {
+  // Fix wave 2:删除前二次确认(取消 → 不删;确认 → 删)
+  it("删除:confirm 取消 → 不删;确认 → 行消失", async () => {
     const { container, store } = await mountSettings({ providers: [P1, P2] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      container.querySelectorAll<HTMLButtonElement>("[data-provider-delete]")[0]!.click();
+      await nextTick();
+      expect(confirm).toHaveBeenCalledWith(`删除服务商「${P1.name}」?(未开启云同步时其密钥将永久丢失)`);
+      expect(store.providers.map((p) => p.id)).toEqual([P1.id, P2.id]);
 
-    container.querySelectorAll<HTMLButtonElement>("[data-provider-delete]")[0]!.click();
-    await nextTick();
-
-    expect(store.providers.map((p) => p.id)).toEqual([P2.id]);
-    const rows = container.querySelectorAll("[data-provider-row]");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.textContent).toContain(P2.name);
+      confirm.mockReturnValue(true);
+      container.querySelectorAll<HTMLButtonElement>("[data-provider-delete]")[0]!.click();
+      await nextTick();
+      expect(store.providers.map((p) => p.id)).toEqual([P2.id]);
+      const rows = container.querySelectorAll("[data-provider-row]");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.textContent).toContain(P2.name);
+    } finally {
+      confirm.mockRestore();
+    }
   });
 
   it("密钥云同步开关:切换 → store.syncKeys 变更 + 警示文案出现/消失", async () => {

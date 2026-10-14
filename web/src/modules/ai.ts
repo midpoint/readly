@@ -71,8 +71,17 @@ export function parseSummary(out: string): SummaryOutcome {
   return { summary: null, raw };
 }
 
+// 直连/代理统一 120s 超时(Worker 代理侧同款,两端一致);与调用方 signal 合并,任一 abort 即中止
+const STREAM_TIMEOUT_MS = 120_000;
+
+export function mergedAbortSignal(caller: AbortSignal | undefined, timeoutMs = STREAM_TIMEOUT_MS): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return caller ? AbortSignal.any([caller, timeout]) : timeout;
+}
+
 export async function* chatStream(opts: { provider: AiProvider; messages: ChatMessage[]; signal?: AbortSignal }): AsyncGenerator<string> {
   const { provider } = opts;
+  const signal = mergedAbortSignal(opts.signal);
   const payload = JSON.stringify({
     baseUrl: normalizeBaseUrl(provider.baseUrl),
     apiKey: provider.apiKey ?? "",
@@ -91,7 +100,7 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: payload,
-      signal: opts.signal,
+      signal,
     });
   } else {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -100,7 +109,7 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
       method: "POST",
       headers,
       body: JSON.stringify({ model: provider.model, messages: opts.messages, stream: true }),
-      signal: opts.signal,
+      signal,
     });
   }
 

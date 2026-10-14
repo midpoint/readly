@@ -131,8 +131,10 @@ describe("ReaderPane AI 摘要", () => {
     const streamEl = host!.querySelector("[data-ai-stream]");
     expect(streamEl).not.toBeNull();
     expect(streamEl!.textContent).toContain('{"one_liner":"总');
-    expect(aiButton().disabled).toBe(true);
+    // Fix wave 2:生成中按钮不再 disabled,而是可点击取消
     expect(aiButton().textContent).toContain("生成中…");
+    expect(aiButton().title).toBe("点击取消");
+    expect(aiButton().disabled).toBe(false);
 
     release();
     await vi.waitFor(() => expect(host!.querySelector("[data-ai-card]")).not.toBeNull());
@@ -160,7 +162,7 @@ describe("ReaderPane AI 摘要", () => {
     expect(host!.querySelector("[data-ai-stream]")!.textContent).toContain("这是一段普通文字");
     expect(useReaderStore().article!.aiSummary).toBeNull();
     expect(vi.mocked(api).mock.calls.some(([p]) => String(p).endsWith("/ai-summary"))).toBe(false);
-    expect(aiButton().disabled).toBe(false);
+    expect(aiButton().textContent).toContain("AI 摘要");
   });
 
   it("已有缓存:点击按钮切换卡片显隐,不重新生成", async () => {
@@ -197,8 +199,40 @@ describe("ReaderPane AI 摘要", () => {
 
     expect(host!.textContent).not.toContain("模型未按 JSON 输出");
     expect(host!.querySelector("[data-ai-stream]")).toBeNull();
-    expect(aiButton().disabled).toBe(false);
+    expect(aiButton().textContent).toContain("AI 摘要");
     releasePost({ ok: true });
+  });
+
+  // Fix wave 2:生成中按钮即取消入口(不再只能靠切文/关文停)
+  it("生成中点击按钮执行取消:流停止、状态回 idle、不写缓存", async () => {
+    await mountReader({});
+    let signal: AbortSignal | undefined;
+    vi.mocked(chatStream).mockImplementation((opts) => {
+      signal = opts.signal;
+      return (async function* () {
+        yield '{"one_liner":"总';
+        await new Promise((_, reject) => {
+          opts.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      })();
+    });
+    const ai = useAiStore();
+    const cancelSpy = vi.spyOn(ai, "cancelSummary");
+
+    aiButton().click();
+    await flush();
+    expect(aiButton().textContent).toContain("生成中…");
+    expect(aiButton().title).toBe("点击取消");
+
+    aiButton().click(); // 生成中再点 = 取消
+    await vi.waitFor(() => expect(cancelSpy).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(ai.summaryState).toBe("idle");
+    expect(signal!.aborted).toBe(true);
+    expect(host!.querySelector("[data-ai-stream]")).toBeNull(); // 流式卡随 idle 收起
+    expect(host!.querySelector("[data-ai-card]")).toBeNull();
+    expect(vi.mocked(api).mock.calls.some(([p]) => String(p).endsWith("/ai-summary"))).toBe(false);
+    cancelSpy.mockRestore();
   });
 
   it("重新生成:再次流式生成并替换卡片内容", async () => {
@@ -217,6 +251,43 @@ describe("ReaderPane AI 摘要", () => {
 
     expect(vi.mocked(chatStream)).toHaveBeenCalledTimes(1);
     expect(useReaderStore().article!.aiSummary).toEqual({ oneLiner: "新总结", points: ["新要点"] });
+  });
+
+  // Fix wave 2:重新生成失败/降级保留旧摘要(不清缓存)
+  it("重新生成失败:旧摘要卡保留并显示错误提示", async () => {
+    await mountReader({ aiSummary: { oneLiner: "旧总结", points: ["旧"] } });
+    aiButton().click();
+    await nextTick();
+    expect(host!.querySelector("[data-ai-card]")!.textContent).toContain("旧总结");
+
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        throw new Error("服务商返回错误(HTTP 502)");
+      })()
+    );
+    host!.querySelector<HTMLButtonElement>("[data-ai-regenerate]")!.click();
+    await vi.waitFor(() => expect(host!.textContent).toContain("服务商返回错误(HTTP 502)"));
+
+    expect(host!.querySelector("[data-ai-error]")).not.toBeNull();
+    expect(host!.querySelector("[data-ai-card]")!.textContent).toContain("旧总结");
+    expect(useReaderStore().article!.aiSummary).toEqual({ oneLiner: "旧总结", points: ["旧"] });
+  });
+
+  it("重新生成降级:旧摘要保留(数据面),展示原文与说明", async () => {
+    await mountReader({ aiSummary: { oneLiner: "旧总结", points: ["旧"] } });
+    aiButton().click();
+    await nextTick();
+
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        yield "普通回复文本";
+      })()
+    );
+    host!.querySelector<HTMLButtonElement>("[data-ai-regenerate]")!.click();
+    await vi.waitFor(() => expect(host!.textContent).toContain("模型未按 JSON 输出,以上为原始回复"));
+
+    expect(host!.querySelector("[data-ai-stream]")!.textContent).toContain("普通回复文本");
+    expect(useReaderStore().article!.aiSummary).toEqual({ oneLiner: "旧总结", points: ["旧"] });
   });
 
   it("切文复位:在途生成作废,卡片/引导收起、摘要状态清空", async () => {

@@ -4,6 +4,7 @@ import {
   buildSummaryMessages,
   chatStream,
   detectTextLang,
+  mergedAbortSignal,
   normalizeBaseUrl,
   parseSummary,
   PROVIDER_PRESETS,
@@ -91,6 +92,36 @@ describe("chatStream", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+  });
+
+  // Fix wave 2:两条路径都带 120s 超时,并与调用方 signal 合并(任一 abort 即中止)
+  it("mergedAbortSignal:无调用方 signal 用超时信号;两者合并,caller abort 传导到 fetch", async () => {
+    const timeoutOnly = mergedAbortSignal(undefined);
+    expect(timeoutOnly).toBeInstanceOf(AbortSignal);
+    expect(timeoutOnly.aborted).toBe(false);
+    expect(timeoutOnly).not.toBe(AbortSignal.timeout(1));
+
+    const ctrl = new AbortController();
+    const merged = mergedAbortSignal(ctrl.signal);
+    expect(merged.aborted).toBe(false);
+    ctrl.abort(new DOMException("Aborted", "AbortError"));
+    expect(merged.aborted).toBe(true);
+  });
+
+  it("直连与代理 fetch 都收到合并信号:调用方 abort 即中止请求", async () => {
+    for (const useProxy of [false, true]) {
+      const ctrl = new AbortController();
+      const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+      vi.stubGlobal("fetch", fetchMock);
+      const gen = chatStream({ provider: providerOf({ useProxy }), messages: MSGS, signal: ctrl.signal });
+      await collectChat(gen);
+      const init = fetchMock.mock.calls[0]![1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal).not.toBe(ctrl.signal);
+      expect(init.signal!.aborted).toBe(false);
+      ctrl.abort();
+      expect(init.signal!.aborted).toBe(true);
+    }
   });
 
   it("直连非流式回退:JSON 整段产出,URL 与 Bearer 鉴权正确", async () => {
