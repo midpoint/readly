@@ -34,12 +34,12 @@ onMounted(() => {
         <span class="h-3 w-3 shrink-0 rounded-full" :style="{ background: rule.color }" />
         <RouterLink :to="`/keywords/${rule.id}`" data-rule-detail class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium hover:underline">{{ rule.name }}</p>
-          <p class="mt-0.5 truncate text-xs text-neutral-500">
+          <p class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
             {{ rule.isRegex ? "正则" : "关键词" }}:{{ rule.keyword }}
             <span v-if="!isRuleValid(rule)" class="text-red-600 dark:text-red-400"> · 正则无效</span>
           </p>
         </RouterLink>
-        <span class="shrink-0 text-xs text-neutral-500">{{ analysis.hitsByRule[rule.id]?.length ?? 0 }} 篇命中</span>
+        <span class="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{{ analysis.hitsByRule[rule.id]?.length ?? 0 }} 篇命中</span>
         <input
           data-rule-toggle
           type="checkbox"
@@ -48,7 +48,7 @@ onMounted(() => {
           aria-label="启用规则"
           @change="analysis.updateRule(rule.id, { enabled: ($event.target as HTMLInputElement).checked })"
         />
-        <button data-rule-edit class="rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" @click="editing = rule">编辑</button>
+        <button data-rule-edit class="rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="editing = rule">编辑</button>
         <button data-rule-delete class="rounded-md px-2 py-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800" @click="analysis.removeRule(rule.id)">删除</button>
       </div>
     </div>

@@ -100,7 +100,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
   let syncPromise: Promise<void> | null = null;
   let pendingSync = false;
   let hitsTimer: ReturnType<typeof setTimeout> | null = null;
-  let hitsRequestId = 0;
+  // 关键词通道用独立高位 id 空间(聚类 activeRequest 自 1 起递增),两条通道的 id 永不相交
+  let hitsRequestId = 1_000_000;
   let hitsPendingRecalc = false; // 计算在途期间的规则变更:落地后补跑一轮(不丢失)
   let lastHitsDocs: MirrorRow[] = []; // 命中计算时的镜像快照,供 hitsByRule 关联元数据
 
@@ -286,7 +287,8 @@ export const useAnalysisStore = defineStore("analysis", () => {
           return;
         }
         if (msg.type === "error") {
-          // 聚类在前:与既有 activeRequest 语义保持一致(取消后 activeRequest=0,迟到结果仍被丢弃)
+          // 聚类在前:与既有 activeRequest 语义保持一致(取消后 activeRequest=0,迟到结果仍被丢弃)。
+          // 关键词通道已用高位 id 空间(1_000_000 起),error 归属不再可能碰撞;此处仍按聚类优先兜底。
           if (msg.requestId === activeRequest) {
             computeError.value = "聚类计算失败";
             computing.value = false;

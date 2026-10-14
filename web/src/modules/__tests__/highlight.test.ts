@@ -42,4 +42,31 @@ describe("highlightMatchesIn", () => {
     expect(n).toBe(1);
     expect(root.querySelector("mark[data-rule-id='r9']")?.textContent).toBe("alice");
   });
+  it("幂等:重复 apply 先清旧 mark 再包裹,换色后为规则新颜色(不叠加)", () => {
+    const root = doc("<p>openai 你好</p>");
+    highlightMatchesIn(root, [rule({ color: "#ef4444" })]);
+    expect(root.querySelectorAll("mark[data-rule-id='r1']")).toHaveLength(1);
+    const oldBg = (root.querySelector("mark[data-rule-id='r1']") as HTMLElement).style.backgroundColor;
+
+    highlightMatchesIn(root, [rule({ color: "#22c55e" })]);
+    const marks = root.querySelectorAll("mark[data-rule-id='r1']");
+    expect(marks).toHaveLength(1); // 不叠加
+    const probe = document.createElement("mark");
+    probe.style.backgroundColor = "#22c55e33"; // 与实现同一赋值路径,消解序列化差异
+    expect((marks[0] as HTMLElement).style.backgroundColor).toBe(probe.style.backgroundColor);
+    expect((marks[0] as HTMLElement).style.backgroundColor).not.toBe(oldBg);
+  });
+  it("幂等:空规则 apply 清空本函数旧 mark,普通 <mark> 不受影响", () => {
+    const root = doc("<p>openai 与 openai</p><p><mark>原生标记</mark></p>");
+    const n = highlightMatchesIn(root, [rule({})]);
+    expect(n).toBe(2);
+    expect(root.querySelectorAll("mark[data-rule-id]")).toHaveLength(2);
+
+    const cleared = highlightMatchesIn(root, []);
+    expect(cleared).toBe(0);
+    expect(root.querySelectorAll("mark[data-rule-id]")).toHaveLength(0);
+    expect(root.querySelectorAll("mark")).toHaveLength(1); // 普通 mark 保留
+    expect(root.textContent).toContain("openai 与 openai");
+    expect(root.textContent).toContain("原生标记");
+  });
 });

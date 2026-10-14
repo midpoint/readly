@@ -47,11 +47,11 @@ function save(): void {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="emit('close')">
     <div class="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-5 text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100">
       <h3 class="text-base font-semibold">{{ initial ? "编辑规则" : "新建规则" }}</h3>
-      <label class="mt-4 block text-xs text-neutral-500">
+      <label class="mt-4 block text-xs text-neutral-500 dark:text-neutral-400">
         名称(可选)
         <input v-model="name" data-rule-name class="mt-1 w-full rounded-lg border border-neutral-300 bg-transparent px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:text-neutral-100" placeholder="如:OpenAI 动态" />
       </label>
-      <label class="mt-3 block text-xs text-neutral-500">
+      <label class="mt-3 block text-xs text-neutral-500 dark:text-neutral-400">
         关键词
         <input v-model="keyword" data-rule-keyword class="mt-1 w-full rounded-lg border border-neutral-300 bg-transparent px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:text-neutral-100" placeholder="要监控的词或正则表达式" />
       </label>
@@ -62,7 +62,7 @@ function save(): void {
         <label class="flex items-center gap-1.5"><input v-model="enabled" type="checkbox" class="accent-[var(--accent)]" />启用</label>
       </div>
       <div class="mt-3">
-        <p class="text-xs text-neutral-500">标记颜色</p>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400">标记颜色</p>
         <div class="mt-1.5 flex gap-1.5">
           <button
             v-for="c in RULE_COLORS"

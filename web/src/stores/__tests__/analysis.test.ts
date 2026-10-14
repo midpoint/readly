@@ -496,6 +496,7 @@ describe("关键词规则与命中", () => {
     const msgs = postedKeywords();
     expect(msgs).toHaveLength(1);
     const msg = msgs[0]!;
+    expect(msg.requestId).toBeGreaterThanOrEqual(1_000_000); // 关键词通道独立高位 id 空间,与聚类 activeRequest 不相交
     expect(msg.rules).toEqual([{ ...OPENAI_RULE, id: ruleId, name: "openai" }]);
     expect(msg.docs.map((d) => d.id)).toEqual([2, 1]); // 镜像时间倒序
     expect(msg.docs.find((d) => d.id === 1)!.text).toBe("openai 真香"); // text=htmlToText(content)

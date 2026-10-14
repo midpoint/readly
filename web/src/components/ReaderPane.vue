@@ -30,8 +30,9 @@ watch(
 );
 
 // 渲染后高亮:只包裹已清洗 DOM 的文本节点(零 innerHTML 注入)。
-// v-html 重渲染(正文/全文切换、打开新文章)会清掉旧的 mark,
-// 由本 watch(html / 规则数 / 文章 id)在下一拍重贴;规则从本地/服务端异步就绪时同理由此覆盖。
+// watch 源返回新数组,每次依赖重估(html 变化 / rules 任意变更含换色 / 文章 id)都会触发回调,
+// 在下一拍重贴;v-html 重渲染会清掉旧 mark,而 highlightMatchesIn 本身幂等(先清旧 mark 再包裹),
+// 重贴不叠加、换色/关闭即时生效;规则从本地/服务端异步就绪时同理由此覆盖。
 const articleBody = ref<HTMLElement | null>(null);
 
 function applyHighlights(): void {

@@ -5,6 +5,7 @@ import { findMatchRanges, isRuleValid, type MatchRange } from "./keywords";
  * 在已清洗(经 sanitize)的 DOM 上为关键词命中包裹 <mark>。
  * 只操作文本节点(TreeWalker + createElement),不产生任何 innerHTML 注入;
  * 已有 <mark> 内的文本不参与匹配(避免二次包裹/自嵌套)。
+ * 幂等:每次调用先清除本函数此前包裹的 mark,重复调用可安全换色/取消。
  * 返回实际插入的标记数(上限 maxMarks)。
  */
 export function highlightMatchesIn(
@@ -13,6 +14,13 @@ export function highlightMatchesIn(
   opts: { maxMarks?: number } = {}
 ): number {
   const maxMarks = opts.maxMarks ?? 300;
+
+  // 幂等:先移除本函数此前产生的标记(仅 data-rule-id 的 mark,普通 <mark> 不动),
+  // 避免重贴时新旧 mark 叠加导致无法换色/取消。清除在早退之前——零规则调用同样清空旧高亮。
+  for (const old of Array.from(root.querySelectorAll("mark[data-rule-id]"))) {
+    old.parentNode?.replaceChild(document.createTextNode(old.textContent ?? ""), old);
+  }
+
   const active = rules.filter((r) => r.enabled && isRuleValid(r));
   if (active.length === 0) return 0;
 
