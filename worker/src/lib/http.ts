@@ -12,14 +12,20 @@ export interface FetchTextOptions {
 export interface FetchTextResult {
   status: number;
   headers: Headers;
+  /** UTF-8 解码文本(语义不变);原始字节见 `buffer` */
   body: string;
   finalUrl: string;
   truncated: boolean;
+  /** 原始响应字节(截断后),供 charset 解码 */
+  buffer: Uint8Array;
 }
 
-async function readCapped(res: Response, maxBytes: number): Promise<{ body: string; truncated: boolean }> {
+async function readCapped(
+  res: Response,
+  maxBytes: number
+): Promise<{ body: string; truncated: boolean; bytes: Uint8Array }> {
   const reader = res.body?.getReader();
-  if (!reader) return { body: "", truncated: false };
+  if (!reader) return { body: "", truncated: false, bytes: new Uint8Array(0) };
   const chunks: Uint8Array[] = [];
   let total = 0;
   let truncated = false;
@@ -42,7 +48,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<{ body: stri
     merged.set(c, offset);
     offset += c.byteLength;
   }
-  return { body: new TextDecoder().decode(merged), truncated };
+  return { body: new TextDecoder().decode(merged), truncated, bytes: merged };
 }
 
 export async function fetchText(
@@ -87,14 +93,15 @@ export async function fetchText(
     }
     let body: string;
     let truncated: boolean;
+    let bytes: Uint8Array;
     try {
-      ({ body, truncated } = await readCapped(res, maxBytes));
+      ({ body, truncated, bytes } = await readCapped(res, maxBytes));
     } catch (e) {
       const name = (e as { name?: string } | null)?.name;
       if (name === "TimeoutError" || name === "AbortError") throw new Error("抓取超时");
       throw e;
     }
-    return { status: res.status, headers: res.headers, body, finalUrl: current, truncated };
+    return { status: res.status, headers: res.headers, body, finalUrl: current, truncated, buffer: bytes };
   }
   throw new Error("重定向次数过多");
 }

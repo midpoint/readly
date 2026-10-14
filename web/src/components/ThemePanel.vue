@@ -151,6 +151,26 @@ const seg = (active: boolean) =>
       </label>
     </div>
 
+    <div :class="section">
+      <p :class="label">全文抓取</p>
+      <label class="mt-1.5 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        <input type="checkbox" :checked="settings.fetchPrefs.auto" class="accent-[var(--accent)]" @change="settings.updateFetchPrefs({ auto: ($event.target as HTMLInputElement).checked })" />
+        摘要过短时自动抓取原文
+      </label>
+      <label class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        阈值(字)
+        <input
+          type="number"
+          min="50"
+          max="5000"
+          step="50"
+          :value="settings.fetchPrefs.minChars"
+          class="w-20 rounded-md border border-neutral-300 bg-transparent px-2 py-0.5 text-xs text-neutral-800 dark:border-neutral-700 dark:text-neutral-200"
+          @change="settings.updateFetchPrefs({ minChars: Number(($event.target as HTMLInputElement).value) })"
+        />
+      </label>
+    </div>
+
     <button data-reset class="mt-5 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800" @click="settings.resetPrefs()">
       恢复默认
     </button>

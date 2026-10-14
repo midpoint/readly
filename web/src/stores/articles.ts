@@ -9,6 +9,8 @@ interface StatePatch {
   isRead?: boolean;
   isStarred?: boolean;
   isLater?: boolean;
+  // 本地补丁用(全文抓取成功后置 hasFullText);PATCH 端点不消费该字段
+  hasFullText?: boolean;
 }
 
 const STATS_REFRESH_DEBOUNCE_MS = 800;

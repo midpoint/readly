@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_READER_PREFS } from "@readly/shared";
 import { api } from "@/api/client";
-import { sanitizePrefs, useSettingsStore } from "@/stores/settings";
+import { sanitizeFetchPrefs, sanitizePrefs, useSettingsStore } from "@/stores/settings";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
@@ -95,6 +95,8 @@ describe("settings store", () => {
 
   it("initRemote:本地已有偏好时本地优先,不回写", async () => {
     localStorage.setItem(LS_KEY, JSON.stringify({ ...DEFAULT_READER_PREFS, readingTheme: "night" }));
+    // 本地「全有」(阅读 + 抓取偏好都在)才短路零请求:两把键都要 seed
+    localStorage.setItem("readly_fetch_prefs", JSON.stringify({ auto: true, minChars: 300 }));
     vi.mocked(api).mockResolvedValue({ reader_prefs: { ...DEFAULT_READER_PREFS, readingTheme: "sepia" } });
     const store = useSettingsStore();
     store.initLocal();
@@ -144,5 +146,46 @@ describe("settings store", () => {
     store.updatePrefs({ fontSize: 23 });
     await vi.advanceTimersByTimeAsync(1100);
     expect(JSON.parse(localStorage.getItem(LS_KEY)!).fontSize).toBe(23);
+  });
+});
+
+describe("fetchPrefs 切片", () => {
+  it("sanitizeFetchPrefs:缺省 true/300,阈值钳制 [50,5000]", () => {
+    expect(sanitizeFetchPrefs({})).toEqual({ auto: true, minChars: 300 });
+    expect(sanitizeFetchPrefs({ auto: false, minChars: 1 })).toEqual({ auto: false, minChars: 50 });
+    expect(sanitizeFetchPrefs({ minChars: 99999 })).toEqual({ auto: true, minChars: 5000 });
+    expect(sanitizeFetchPrefs("junk")).toEqual({ auto: true, minChars: 300 });
+  });
+
+  it("本地无 fetch 偏好时 initRemote 采用服务端 fetch_prefs", async () => {
+    localStorage.setItem(LS_KEY, JSON.stringify(DEFAULT_READER_PREFS)); // 仅本地有阅读偏好
+    vi.mocked(api).mockResolvedValue({ fetch_prefs: { auto: false, minChars: 500 } });
+    const store = useSettingsStore();
+    store.initLocal();
+    await store.initRemote();
+    expect(store.fetchPrefs).toEqual({ auto: false, minChars: 500 });
+  });
+
+  it("resetPrefs 同时恢复抓取偏好", () => {
+    const store = useSettingsStore();
+    store.initLocal();
+    store.updateFetchPrefs({ auto: false, minChars: 900 });
+    store.resetPrefs();
+    expect(store.fetchPrefs).toEqual({ auto: true, minChars: 300 });
+    expect(JSON.parse(localStorage.getItem("readly_fetch_prefs")!).minChars).toBe(300);
+  });
+
+  it("updateFetchPrefs 写本地并防抖推送(与阅读偏好同一 PUT 双键)", async () => {
+    vi.mocked(api).mockResolvedValue({ ok: true });
+    const store = useSettingsStore();
+    store.initLocal();
+    store.updateFetchPrefs({ minChars: 800 });
+    expect(JSON.parse(localStorage.getItem("readly_fetch_prefs")!).minChars).toBe(800);
+    await vi.advanceTimersByTimeAsync(1100);
+    const call = vi.mocked(api).mock.calls.at(-1)!;
+    expect(call[0]).toBe("/api/settings");
+    const kv = (call[1]!.body as { kv: Record<string, unknown> }).kv;
+    expect(kv.reader_prefs).toBeDefined();
+    expect((kv.fetch_prefs as { minChars: number }).minChars).toBe(800);
   });
 });

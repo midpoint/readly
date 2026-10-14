@@ -1,10 +1,11 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
-import { DEFAULT_READER_PREFS, SETTING_KEYS, type ReaderPrefs } from "@readly/shared";
+import { DEFAULT_READER_PREFS, SETTING_KEYS, type FetchPrefs, type ReaderPrefs } from "@readly/shared";
 import { api } from "@/api/client";
 import { applyTheme, isHexColor, isReadingTheme, watchSystemTheme } from "@/modules/theme";
 
 const LS_KEY = "readly_prefs";
+const FETCH_LS_KEY = "readly_fetch_prefs";
 const PUT_DEBOUNCE_MS = 1000;
 const NUM_RANGES = {
   fontSize: [14, 24],
@@ -38,6 +39,18 @@ export function sanitizePrefs(raw: unknown): ReaderPrefs {
   };
 }
 
+export const DEFAULT_FETCH_PREFS: FetchPrefs = { auto: true, minChars: 300 };
+
+export function sanitizeFetchPrefs(raw: unknown): FetchPrefs {
+  const d = DEFAULT_FETCH_PREFS;
+  if (typeof raw !== "object" || raw === null) return { ...d };
+  const o = raw as Record<string, unknown>;
+  return {
+    auto: o.auto !== false,
+    minChars: clampNumber(o.minChars, 50, 5000, d.minChars),
+  };
+}
+
 function readLocal(): ReaderPrefs | null {
   const raw = localStorage.getItem(LS_KEY);
   if (!raw) return null;
@@ -48,10 +61,22 @@ function readLocal(): ReaderPrefs | null {
   }
 }
 
+function readLocalFetch(): FetchPrefs | null {
+  const raw = localStorage.getItem(FETCH_LS_KEY);
+  if (!raw) return null;
+  try {
+    return sanitizeFetchPrefs(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
 export const useSettingsStore = defineStore("settings", () => {
   const prefs = ref<ReaderPrefs>({ ...DEFAULT_READER_PREFS });
+  const fetchPrefs = ref<FetchPrefs>({ ...DEFAULT_FETCH_PREFS });
   const ready = ref(false);
   let serverCopy: string | null = null;
+  let fetchServerCopy: string | null = null;
   let putTimer: ReturnType<typeof setTimeout> | null = null;
   let disposeSystem: (() => void) | null = null;
 
@@ -63,23 +88,38 @@ export const useSettingsStore = defineStore("settings", () => {
     const local = readLocal();
     if (local) prefs.value = local;
     apply();
+    const localFetch = readLocalFetch();
+    if (localFetch) fetchPrefs.value = localFetch;
     ready.value = true;
   }
 
   async function initRemote(): Promise<void> {
-    // 本地已有偏好:本地为真源,不拉取服务端、不回写
-    if (readLocal() !== null) {
+    // 本地两侧偏好全有:本地为真源,不拉取服务端、不回写;任一侧缺失才拉取
+    if (readLocal() !== null && readLocalFetch() !== null) {
       serverCopy = JSON.stringify(readLocal());
+      fetchServerCopy = JSON.stringify(readLocalFetch());
       return;
     }
     const all = await api<Record<string, unknown>>("/api/settings");
-    const serverPrefs = all[SETTING_KEYS.readerPrefs];
-    if (serverPrefs === undefined) return;
-    serverCopy = JSON.stringify(sanitizePrefs(serverPrefs));
-    // GET 在途期间本地被写入(如另一处 updatePrefs)时,本地为真源,不再套用服务端快照
     if (readLocal() === null) {
-      prefs.value = sanitizePrefs(serverPrefs);
-      apply();
+      const serverPrefs = all[SETTING_KEYS.readerPrefs];
+      if (serverPrefs !== undefined) {
+        serverCopy = JSON.stringify(sanitizePrefs(serverPrefs));
+        // GET 在途期间本地被写入(如另一处 updatePrefs)时,本地为真源,不再套用服务端快照
+        if (readLocal() === null) {
+          prefs.value = sanitizePrefs(serverPrefs);
+          apply();
+        }
+      }
+    }
+    if (readLocalFetch() === null) {
+      const serverFetch = all[SETTING_KEYS.fetchPrefs];
+      if (serverFetch !== undefined) {
+        fetchServerCopy = JSON.stringify(sanitizeFetchPrefs(serverFetch));
+        if (readLocalFetch() === null) {
+          fetchPrefs.value = sanitizeFetchPrefs(serverFetch);
+        }
+      }
     }
   }
 
@@ -94,19 +134,31 @@ export const useSettingsStore = defineStore("settings", () => {
     prefs.value = sanitizePrefs({ ...prefs.value, ...patch });
   }
 
+  function updateFetchPrefs(patch: Partial<FetchPrefs>): void {
+    fetchPrefs.value = sanitizeFetchPrefs({ ...fetchPrefs.value, ...patch });
+  }
+
   function resetPrefs(): void {
     prefs.value = { ...DEFAULT_READER_PREFS };
+    fetchPrefs.value = { ...DEFAULT_FETCH_PREFS };
   }
 
   async function pushRemote(): Promise<void> {
     const serialized = JSON.stringify(prefs.value);
-    if (serialized === serverCopy) return;
+    const serializedFetch = JSON.stringify(fetchPrefs.value);
+    if (serialized === serverCopy && serializedFetch === fetchServerCopy) return;
     try {
       await api("/api/settings", {
         method: "PUT",
-        body: { kv: { [SETTING_KEYS.readerPrefs]: prefs.value } },
+        body: {
+          kv: {
+            [SETTING_KEYS.readerPrefs]: prefs.value,
+            [SETTING_KEYS.fetchPrefs]: fetchPrefs.value,
+          },
+        },
       });
       serverCopy = serialized;
+      fetchServerCopy = serializedFetch;
     } catch {
       // 静默:本地为真源,下次变更再试
     }
@@ -134,5 +186,18 @@ export const useSettingsStore = defineStore("settings", () => {
     { deep: true, flush: "sync" }
   );
 
-  return { prefs, ready, initLocal, initRemote, initSystemWatch, updatePrefs, resetPrefs, flushPrefs };
+  watch(
+    fetchPrefs,
+    () => {
+      localStorage.setItem(FETCH_LS_KEY, JSON.stringify(fetchPrefs.value));
+      if (putTimer) clearTimeout(putTimer);
+      putTimer = setTimeout(() => {
+        putTimer = null;
+        void pushRemote();
+      }, PUT_DEBOUNCE_MS);
+    },
+    { deep: true, flush: "sync" }
+  );
+
+  return { prefs, fetchPrefs, ready, initLocal, initRemote, initSystemWatch, updatePrefs, updateFetchPrefs, resetPrefs, flushPrefs };
 });
