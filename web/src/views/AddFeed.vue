@@ -37,6 +37,12 @@ async function discover() {
   }
 }
 
+// 订阅集合已变(加源 / OPML 导入):标记列表失效,返回阅读器时由 Inbox 自动重拉新文章
+// (UI 层标记,避免 store 间新依赖)
+function markListStale(): void {
+  useArticlesStore().markStale();
+}
+
 async function subscribe(urls: string[]) {
   const clean = urls.map((u) => u.trim()).filter(Boolean);
   if (clean.length === 0) return;
@@ -45,7 +51,7 @@ async function subscribe(urls: string[]) {
   failures.value = [];
   try {
     const r = await store.addFeeds(clean, categoryId.value);
-    useArticlesStore().markStale(); // 订阅集合已变:标记列表失效,返回阅读器即重拉新源文章
+    markListStale();
     message.value = `成功添加 ${r.created} 个源`;
     failures.value = r.failed;
     candidates.value = [];
@@ -79,6 +85,7 @@ async function importOpml(e: Event) {
       created += r.created;
       failures.value.push(...r.failed);
     }
+    markListStale();
     message.value = `导入完成:成功 ${created} 个源`;
   } catch (err) {
     message.value = err instanceof Error ? err.message : "OPML 解析失败";
