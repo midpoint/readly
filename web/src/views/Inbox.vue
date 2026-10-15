@@ -1,8 +1,16 @@
+<script lang="ts">
+// 分隔线宽度钳制区间(与 sanitizePrefs 的两端一致);具名导出供测试引用
+export const SIDEBAR_MIN = 200;
+export const SIDEBAR_MAX = 420;
+export const LIST_MIN = 300;
+export const LIST_MAX = 600;
+</script>
+
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
-import type { ArticleView } from "@readly/shared";
+import { DEFAULT_READER_PREFS, type ArticleView } from "@readly/shared";
 import ArticleList from "@/components/ArticleList.vue";
 import MobileNav from "@/components/MobileNav.vue";
 import ReaderPane from "@/components/ReaderPane.vue";
@@ -86,6 +94,8 @@ function setArticleParam(id: number | null): void {
 onMounted(async () => {
   // 文档级键盘监听:冷加载(未点击任意区域)即可用快捷键;输入框守卫在 onKey 内
   document.addEventListener("keydown", onKey);
+  // 视口门控:≥1600px 才渲染分隔线(窄屏渲染与既有断点行为不变)
+  window.addEventListener("resize", onWindowResize);
   await feedsStore.load();
   // 后台接线:镜像同步与聚类偏好就绪(失败静默,不阻塞首屏)
   void useAnalysisStore().init().catch(() => undefined);
@@ -94,6 +104,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener("keydown", onKey);
+  window.removeEventListener("resize", onWindowResize);
 });
 
 watch(
@@ -173,18 +184,104 @@ async function selectArticle(id: number) {
     void articles.setState(id, { isRead: true }).catch(() => undefined);
   }
 }
+
+// —— 分隔线拖拽调宽(仅 ≥1600px 启用;写入经 settings.updatePrefs → sanitizePrefs 钳制)——
+const wideEnough = ref(typeof window !== "undefined" ? window.innerWidth >= 1600 : false);
+function onWindowResize(): void {
+  wideEnough.value = window.innerWidth >= 1600;
+}
+
+// 宽度经 CSS 变量下发;窄屏不渲染该样式,宽度退回既有 Tailwind 类
+const layoutStyle = computed(() =>
+  wideEnough.value
+    ? {
+        "--side-w": `${settings.prefs.sidebarWidth}px`,
+        "--list-w": `${settings.prefs.listWidth}px`,
+      }
+    : undefined
+);
+
+function resizeSidebar(deltaX: number): void {
+  settings.updatePrefs({ sidebarWidth: settings.prefs.sidebarWidth + deltaX });
+}
+function resizeList(deltaX: number): void {
+  settings.updatePrefs({ listWidth: settings.prefs.listWidth + deltaX });
+}
+
+const dragging = ref(false);
+function startDrag(kind: "sidebar" | "list", e: PointerEvent): void {
+  e.preventDefault();
+  const startX = e.clientX;
+  const handle = e.currentTarget as HTMLElement;
+  try {
+    handle.setPointerCapture(e.pointerId);
+  } catch {
+    // jsdom 等环境无 setPointerCapture
+  }
+  dragging.value = true;
+  // 拖拽全程以起点为唯一基准(每次 move 都对 startX 计算,避免累计漂移);
+  // 写入统一走 resizeSidebar/resizeList:传「目标 - 当前」的增量,
+  // 与直接设为目标等价(sanitizePrefs 为单调钳制,clamp(当前 + 目标 - 当前) === clamp(目标))
+  const base = kind === "sidebar" ? settings.prefs.sidebarWidth : settings.prefs.listWidth;
+  const move = (ev: PointerEvent): void => {
+    const target = base + (ev.clientX - startX);
+    if (kind === "sidebar") resizeSidebar(target - settings.prefs.sidebarWidth);
+    else resizeList(target - settings.prefs.listWidth);
+  };
+  const cleanup = (): void => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", cleanup);
+    handle.removeEventListener("pointercancel", cleanup);
+    window.removeEventListener("pointerup", cleanup);
+    dragging.value = false;
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", cleanup);
+  handle.addEventListener("pointercancel", cleanup);
+  window.addEventListener("pointerup", cleanup);
+}
+
+function resetDivider(kind: "sidebar" | "list"): void {
+  if (kind === "sidebar") settings.updatePrefs({ sidebarWidth: DEFAULT_READER_PREFS.sidebarWidth });
+  else settings.updatePrefs({ listWidth: DEFAULT_READER_PREFS.listWidth });
+}
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950">
-    <Sidebar class="hidden md:flex" />
+  <div
+    class="flex h-full flex-col bg-white md:flex-row dark:bg-neutral-950"
+    :class="dragging ? 'select-none' : ''"
+    :style="layoutStyle"
+  >
+    <Sidebar class="hidden md:flex" :style="wideEnough ? { width: 'var(--side-w)' } : undefined" />
+    <div
+      v-if="wideEnough"
+      data-resize-handle="sidebar"
+      role="separator"
+      aria-orientation="vertical"
+      title="拖拽调节宽度,双击恢复默认"
+      class="hidden w-1 shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-[var(--accent)] md:block dark:bg-neutral-800"
+      @pointerdown="startDrag('sidebar', $event)"
+      @dblclick="resetDivider('sidebar')"
+    />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div
-        class="w-full shrink-0 overflow-hidden md:w-[380px] md:border-r md:border-neutral-200 dark:md:border-neutral-800"
-        :class="reader.article ? 'hidden md:block' : 'block'"
+        class="w-full shrink-0 overflow-hidden md:border-r md:border-neutral-200 dark:md:border-neutral-800"
+        :class="[reader.article ? 'hidden md:block' : 'block', wideEnough ? '' : 'md:w-[380px]']"
+        :style="wideEnough ? { width: 'var(--list-w)' } : undefined"
       >
         <ArticleList />
       </div>
+      <div
+        v-if="wideEnough && reader.article"
+        data-resize-handle="list"
+        role="separator"
+        aria-orientation="vertical"
+        title="拖拽调节宽度,双击恢复默认"
+        class="hidden w-1 shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-[var(--accent)] md:block dark:bg-neutral-800"
+        @pointerdown="startDrag('list', $event)"
+        @dblclick="resetDivider('list')"
+      />
       <ReaderPane v-if="reader.article" @close="closeArticle" />
       <div v-else class="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">选择左侧文章开始阅读</div>
     </div>

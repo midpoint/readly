@@ -45,6 +45,15 @@ describe("sanitizePrefs", () => {
     expect(p.autoMarkReadOnOpen).toBe(true);
     expect(p.unreadOnly).toBe(false);
     expect(p.collapsedCategoryIds).toEqual([]);
+    expect(p.sidebarWidth).toBe(256);
+    expect(p.listWidth).toBe(380);
+  });
+  it("sidebarWidth/listWidth 钳制与保留", () => {
+    expect(sanitizePrefs({ sidebarWidth: 100 }).sidebarWidth).toBe(200);
+    expect(sanitizePrefs({ sidebarWidth: 999 }).sidebarWidth).toBe(420);
+    expect(sanitizePrefs({ listWidth: 100 }).listWidth).toBe(300);
+    expect(sanitizePrefs({ listWidth: 999 }).listWidth).toBe(600);
+    expect(sanitizePrefs({ sidebarWidth: 320, listWidth: 450 }).sidebarWidth).toBe(320);
   });
   it("collapsedCategoryIds 去重、过滤非整数、缺省为空", () => {
     expect(sanitizePrefs({ collapsedCategoryIds: [3, 3, 7, "x", 2.5, null] }).collapsedCategoryIds).toEqual([3, 7]);
