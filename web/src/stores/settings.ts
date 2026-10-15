@@ -36,6 +36,9 @@ export function sanitizePrefs(raw: unknown): ReaderPrefs {
     collapsedCategoryIds: Array.isArray(o.collapsedCategoryIds)
       ? [...new Set(o.collapsedCategoryIds.filter((v): v is number => typeof v === "number" && Number.isInteger(v)))].slice(0, 200)
       : [],
+    sidebarWidth: clampNumber(o.sidebarWidth, 200, 420, d.sidebarWidth),
+    listWidth: clampNumber(o.listWidth, 300, 600, d.listWidth),
+    articleLayout: o.articleLayout === "list" ? "list" : "card",
   };
 }
 

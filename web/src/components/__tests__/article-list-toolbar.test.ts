@@ -189,4 +189,37 @@ describe("ArticleList 顶部工具栏", () => {
     const { useSettingsStore } = await import("@/stores/settings");
     expect(useSettingsStore().prefs.unreadOnly).toBe(true);
   });
+
+  it("点 [data-layout-toggle] 在列表/卡片间切换偏好,行与文案即时更新(无需重载)", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    const { useSettingsStore } = await import("@/stores/settings");
+    const settings = useSettingsStore();
+    expect(settings.prefs.articleLayout).toBe("card");
+
+    const toggle = container.querySelector<HTMLButtonElement>("[data-layout-toggle]");
+    expect(toggle).toBeTruthy();
+    expect(toggle!.textContent?.trim()).toBe("列表");
+    expect(toggle!.title).toBe("切换为列表布局");
+    expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
+
+    toggle!.click();
+    await flush();
+    expect(settings.prefs.articleLayout).toBe("list");
+    expect(toggle!.textContent?.trim()).toBe("卡片");
+    expect(toggle!.title).toBe("切换为卡片布局");
+    // 纯展示切换:不重载列表,行内 data-layout 立即更新
+    expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("list");
+
+    toggle!.click();
+    await flush();
+    expect(settings.prefs.articleLayout).toBe("card");
+    expect(toggle!.textContent?.trim()).toBe("列表");
+    expect(toggle!.title).toBe("切换为列表布局");
+    expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
+  });
 });

@@ -151,6 +151,9 @@ export interface ReaderPrefs {
   autoMarkReadOnScroll: boolean;
   unreadOnly: boolean;
   collapsedCategoryIds: number[];
+  sidebarWidth: number;
+  listWidth: number;
+  articleLayout: "card" | "list";
 }
 
 export const DEFAULT_READER_PREFS: ReaderPrefs = {
@@ -165,6 +168,9 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   autoMarkReadOnScroll: true,
   unreadOnly: false,
   collapsedCategoryIds: [],
+  sidebarWidth: 256,
+  listWidth: 380,
+  articleLayout: "card",
 };
 
 export const SETTING_KEYS = {
