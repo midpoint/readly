@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { exportOpml, parseOpml, type OpmlFeed } from "@/modules/opml";
+import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 
 const router = useRouter();
@@ -44,6 +45,7 @@ async function subscribe(urls: string[]) {
   failures.value = [];
   try {
     const r = await store.addFeeds(clean, categoryId.value);
+    useArticlesStore().markStale(); // 订阅集合已变:标记列表失效,返回阅读器即重拉新源文章
     message.value = `成功添加 ${r.created} 个源`;
     failures.value = r.failed;
     candidates.value = [];

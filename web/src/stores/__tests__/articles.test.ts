@@ -132,6 +132,21 @@ describe("articles store", () => {
     }
   });
 
+  it("markStale 置位失效标记、fetchPage 成功路径清位(订阅变更后列表失效标记)", async () => {
+    vi.mocked(api).mockResolvedValue({ items: [item(1)], nextCursor: null });
+    const store = useArticlesStore();
+    expect(store.stale).toBe(false);
+
+    await store.load(true);
+    expect(store.stale).toBe(false); // 正常加载后不处于失效态
+
+    store.markStale(); // 加源成功等订阅集合变化 → UI 层置位
+    expect(store.stale).toBe(true);
+
+    await store.load(true); // 重拉成功后复位,避免每次 applyRouteQuery 都强制拉取
+    expect(store.stale).toBe(false);
+  });
+
   it("unreadOnly 开启时列表与分页请求携带 unread=1", async () => {
     vi.mocked(api).mockImplementation((path, opts) => {
       if (path === "/api/articles") {

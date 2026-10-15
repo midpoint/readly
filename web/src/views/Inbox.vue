@@ -50,8 +50,9 @@ async function applyRouteQuery(): Promise<void> {
   const categoryId = numParam(route.query.category);
   const filterChanged =
     view !== articles.view || feedId !== articles.feedId || categoryId !== articles.categoryId;
-  // 冷启动(URL 无参 == store 默认值)也必须触发首次拉取,故叠加「未加载过」条件
-  if (filterChanged || !articles.loaded) {
+  // 冷启动(URL 无参 == store 默认值)也必须触发首次拉取,故叠加「未加载过」条件;
+  // 订阅集合变化(加源)置位的 stale 同样绕过 loaded 守卫强制重拉
+  if (filterChanged || !articles.loaded || articles.stale) {
     await articles.setFilter(view, feedId, categoryId);
   }
   const articleId = numParam(route.query.a);
