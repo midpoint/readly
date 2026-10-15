@@ -61,15 +61,17 @@ export const useArticlesStore = defineStore("articles", () => {
           unread: useSettingsStore().prefs.unreadOnly ? 1 : undefined,
         },
       });
-      if (reset) items.value = page.items;
-      else {
+      if (reset) {
+        items.value = page.items;
+        // 仅 reset 拉取(首屏 / 切筛选 / 失效标记消费)成功才复位;在途翻页请求不得误清
+        stale.value = false;
+      } else {
         const seen = new Set(items.value.map((i) => i.id));
         items.value = [...items.value, ...page.items.filter((i) => !seen.has(i.id))];
       }
       cursor.value = page.nextCursor;
       hasMore.value = page.nextCursor !== null;
       loaded.value = true;
-      stale.value = false;
     } finally {
       loading.value = false;
       if (pendingReset) {

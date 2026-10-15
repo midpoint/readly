@@ -38,7 +38,7 @@ function onDelete(p: AiProvider): void {
         <span v-if="ai.providers.length >= 20" data-provider-limit class="text-xs text-neutral-500 dark:text-neutral-400">最多 20 个服务商</span>
       </div>
       <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-        用于 AI 摘要 / 翻译。填写任意 OpenAI 兼容接口(预设可改);密钥默认只存本机浏览器,不随订阅数据上云。
+        用于 AI 摘要。填写任意 OpenAI 兼容接口(预设可改);密钥默认只存本机浏览器,不随订阅数据上云。
       </p>
 
       <div class="mt-4 space-y-2">

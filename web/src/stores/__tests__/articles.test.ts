@@ -147,6 +147,22 @@ describe("articles store", () => {
     expect(store.stale).toBe(false);
   });
 
+  it("分页(非 reset)不误清 stale:只有 reset 拉取成功才复位", async () => {
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/articles") return Promise.resolve({ items: [item(1)], nextCursor: "c1" });
+      return Promise.resolve({});
+    });
+    const store = useArticlesStore();
+    await store.load(true);
+    store.markStale();
+
+    await store.loadMore(); // 在途翻页请求:不得清位(否则返回阅读器时漏拉新源文章)
+    expect(store.stale).toBe(true);
+
+    await store.load(true); // reset 拉取成功复位
+    expect(store.stale).toBe(false);
+  });
+
   it("unreadOnly 开启时列表与分页请求携带 unread=1", async () => {
     vi.mocked(api).mockImplementation((path, opts) => {
       if (path === "/api/articles") {
