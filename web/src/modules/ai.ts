@@ -74,14 +74,43 @@ export function parseSummary(out: string): SummaryOutcome {
 // 直连/代理统一 120s 超时(Worker 代理侧同款,两端一致);与调用方 signal 合并,任一 abort 即中止
 const STREAM_TIMEOUT_MS = 120_000;
 
-export function mergedAbortSignal(caller: AbortSignal | undefined, timeoutMs = STREAM_TIMEOUT_MS): AbortSignal {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  return caller ? AbortSignal.any([caller, timeout]) : timeout;
+// 合并调用方 signal 与约束 signal(如超时):任一 abort 即传导;AbortSignal.any 缺失时走兼容回退
+export function mergeSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === "function") return AbortSignal.any(a ? [a, b] : [b]);
+  // 兼容回退(Chrome <116 / Safari <17.4 等):任一 abort 传导到合并信号,并清理另一侧监听
+  const controller = new AbortController();
+  const sources = a ? [a, b] : [b];
+  const forward = (from: AbortSignal): void => {
+    for (const s of sources) s.removeEventListener("abort", onAbort);
+    controller.abort(from.reason);
+  };
+  const onAbort = (ev: Event): void => forward(ev.target as AbortSignal);
+  const alreadyAborted = sources.find((s) => s.aborted);
+  if (alreadyAborted) controller.abort(alreadyAborted.reason);
+  else for (const s of sources) s.addEventListener("abort", onAbort, { once: true });
+  return controller.signal;
 }
 
-export async function* chatStream(opts: { provider: AiProvider; messages: ChatMessage[]; signal?: AbortSignal }): AsyncGenerator<string> {
+export function mergedAbortSignal(caller: AbortSignal | undefined, timeoutMs = STREAM_TIMEOUT_MS): AbortSignal {
+  return mergeSignals(caller, AbortSignal.timeout(timeoutMs));
+}
+
+// fetch 的超时(浏览器以 TimeoutError DOMException 拒绝)统一映射为中文文案;
+// 取消(caller abort)reason 为 AbortError,原样抛出——store 依 controller.signal.aborted 静默收束,语义不变
+function throwMappedFetchError(e: unknown): never {
+  if (e instanceof DOMException && e.name === "TimeoutError") throw new Error("请求超时");
+  throw e;
+}
+
+export async function* chatStream(opts: {
+  provider: AiProvider;
+  messages: ChatMessage[];
+  signal?: AbortSignal;
+  /** 超时毫秒数(默认 120s;测试可缩短以验证超时文案) */
+  timeoutMs?: number;
+}): AsyncGenerator<string> {
   const { provider } = opts;
-  const signal = mergedAbortSignal(opts.signal);
+  const signal = mergeSignals(opts.signal, AbortSignal.timeout(opts.timeoutMs ?? STREAM_TIMEOUT_MS));
   const payload = JSON.stringify({
     baseUrl: normalizeBaseUrl(provider.baseUrl),
     apiKey: provider.apiKey ?? "",
@@ -93,24 +122,32 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
   let res: Response;
   if (provider.useProxy) {
     const token = getToken();
-    res = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: payload,
-      signal,
-    });
+    try {
+      res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: payload,
+        signal,
+      });
+    } catch (e) {
+      throwMappedFetchError(e);
+    }
   } else {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (provider.apiKey) headers.Authorization = `Bearer ${provider.apiKey}`;
-    res = await fetch(`${normalizeBaseUrl(provider.baseUrl)}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model: provider.model, messages: opts.messages, stream: true }),
-      signal,
-    });
+    try {
+      res = await fetch(`${normalizeBaseUrl(provider.baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: provider.model, messages: opts.messages, stream: true }),
+        signal,
+      });
+    } catch (e) {
+      throwMappedFetchError(e);
+    }
   }
 
   if (!res.ok) {
@@ -124,8 +161,13 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
   }
   const ctype = res.headers.get("Content-Type") ?? "";
   if (!res.body || !ctype.includes("event-stream")) {
-    // 非流式回退:整段 JSON
-    const text = await res.text();
+    // 非流式回退:整段 JSON(体读取期超时同样映射文案)
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (e) {
+      throwMappedFetchError(e);
+    }
     try {
       const data = JSON.parse(text) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content;
@@ -135,13 +177,18 @@ export async function* chatStream(opts: { provider: AiProvider; messages: ChatMe
       throw new Error("无法解析 AI 响应");
     }
   }
-  for await (const data of parseSseStream(res.body)) {
-    try {
-      const chunk = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (delta) yield delta;
-    } catch {
-      /* 忽略坏帧 */
+  // SSE 消费期(reader.read)超时同样映射为中文文案;坏帧仍逐帧忽略
+  try {
+    for await (const data of parseSseStream(res.body)) {
+      try {
+        const chunk = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) yield delta;
+      } catch {
+        /* 忽略坏帧 */
+      }
     }
+  } catch (e) {
+    throwMappedFetchError(e);
   }
 }

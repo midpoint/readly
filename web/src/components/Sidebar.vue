@@ -191,6 +191,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
   if (!window.confirm(`删除订阅「${feed.title}」及其全部文章?`)) return;
   try {
     await feedsStore.removeFeed(feed.id);
+    articles.markStale(); // 订阅集合已变:标记列表失效,返回阅读器时重拉(复用本文件既有 store 绑定)
   } catch {
     // 失败静默
   }

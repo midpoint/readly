@@ -41,6 +41,7 @@ function fmtTime(iso: string): string {
         <span v-if="!isRuleValid(rule)" class="text-red-600 dark:text-red-400"> · 正则无效</span>
       </p>
       <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">命中统计基于本地最近 1000 篇。</p>
+      <p v-if="analysis.hitsState === 'computing'" data-hits-computing class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">本地匹配中…</p>
 
       <p v-if="hits.length === 0" class="mt-8 text-center text-sm text-neutral-500 dark:text-neutral-400">暂无命中</p>
       <ul v-else class="mt-6 space-y-1">

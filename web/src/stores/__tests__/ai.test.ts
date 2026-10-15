@@ -464,6 +464,40 @@ describe("ai store 摘要流程", () => {
     expect(summaryPosts()).toHaveLength(0);
   });
 
+  // 控制者追加:切文(resetSummary)与取消同口径——seq 作废后旧续段不得写流文本/降级/缓存;
+  // 以空 raw 的静默哨兵结算,调用方据此不写降级标记(ReaderPane 侧另以文章 id 守卫)
+  it("切文后旧生成落地不写 degraded/流文本(seq+id 守卫)", async () => {
+    const store = useAiStore();
+    store.init();
+    store.addProvider({ apiKey: "sk-1" });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        yield '{"one_liner":"总';
+        await gate; // 模拟忽略 abort 的生成器:切文后仍继续产出
+        yield '结","points":["a"]}';
+      })()
+    );
+
+    const pending = store.generateSummary(INPUT);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.summaryStream).toBe('{"one_liner":"总');
+    expect(store.summaryState).toBe("loading");
+
+    store.resetSummary(); // 切文:在途生成作废
+    expect(store.summaryState).toBe("idle");
+    expect(store.summaryStream).toBe("");
+
+    release(); // 旧续段到达:不写流文本、不落 done、不发 POST
+    const outcome = await pending;
+    expect(store.summaryState).toBe("idle");
+    expect(store.summaryStream).toBe("");
+    expect(store.summaryError).toBeNull();
+    expect(outcome).toEqual({ summary: null, raw: "" });
+    expect(summaryPosts()).toHaveLength(0);
+  });
+
   it("未配置:立即 reject,不发请求、状态仍 idle", async () => {
     const store = useAiStore();
     store.init();

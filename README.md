@@ -62,6 +62,8 @@ npx wrangler deploy
 
 部署后在浏览器打开 Worker 域名,输入 AUTH_TOKEN 即可使用。
 
+浏览器要求:需较新的现代浏览器(Chrome 116+ / Safari 17.4+ / Firefox 124+)。更旧的浏览器上,AI 请求的超时信号合并会回退为内置兼容实现(直连与代理两种模式均适用),无功能损失。
+
 ### 免费额度说明
 
 - Workers 免费版单次调用 CPU 约 10ms:刷新按 `refresh_batch_size`(默认 2)分批,cron 每分钟推进一批,客户端「刷新全部」会循环调用直至完成;订阅源较多(>50)时建议升级 Workers Paid。

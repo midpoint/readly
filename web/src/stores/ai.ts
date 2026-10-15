@@ -81,7 +81,10 @@ export const useAiStore = defineStore("ai", () => {
   const summaryStream = ref("");
   const summaryError = ref<string | null>(null);
   let summaryController: AbortController | null = null;
-  // 生成序号:取消 / 切文复位后,在途生成的结果直接作废,不再回写状态
+  // 生成序号:取消 / 切文复位后,在途生成的结果直接作废,不再回写状态。
+  // 陈旧续段的写入由 seq 与组件 id/state 双守卫拦截:store 侧每次写 summaryStream/summaryState/
+  // summaryError 前统一校验 seq === summarySeq,作废收束以 {summary:null,raw:""} 静默结算;
+  // ReaderPane 侧再以文章 id 与 state=done 守卫消费端(aiDegraded 仅在 state=done 下被消费)
   let summarySeq = 0;
 
   let putTimer: ReturnType<typeof setTimeout> | null = null;

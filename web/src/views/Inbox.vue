@@ -4,6 +4,10 @@ export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 420;
 export const LIST_MIN = 300;
 export const LIST_MAX = 600;
+
+// 进行中拖拽的清理句柄(模块级,非实例态):拖拽未结束即卸载时由 onUnmounted 兜底撤除
+// window/把手监听,否则监听泄漏并会在已卸载组件上继续写偏好
+let activeDragCleanup: (() => void) | null = null;
 </script>
 
 <script setup lang="ts">
@@ -46,8 +50,9 @@ async function applyRouteQuery(): Promise<void> {
   const categoryId = numParam(route.query.category);
   const filterChanged =
     view !== articles.view || feedId !== articles.feedId || categoryId !== articles.categoryId;
-  // 冷启动(URL 无参 == store 默认值)也必须触发首次拉取,故叠加「未加载过」条件
-  if (filterChanged || !articles.loaded) {
+  // 冷启动(URL 无参 == store 默认值)也必须触发首次拉取,故叠加「未加载过」条件;
+  // 订阅集合变化(加源)置位的 stale 同样绕过 loaded 守卫强制重拉
+  if (filterChanged || !articles.loaded || articles.stale) {
     await articles.setFilter(view, feedId, categoryId);
   }
   const articleId = numParam(route.query.a);
@@ -105,6 +110,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener("keydown", onKey);
   window.removeEventListener("resize", onWindowResize);
+  activeDragCleanup?.(); // 拖拽中卸载:撤除把手/window 监听
 });
 
 watch(
@@ -209,6 +215,14 @@ function resizeList(deltaX: number): void {
 }
 
 const dragging = ref(false);
+
+// 把手键盘:←/→ ±16px,Shift 加速 ×4(64px);与拖拽共用同一写入路径(经 sanitizePrefs 钳制)
+function nudge(kind: "sidebar" | "list", dir: 1 | -1, e: KeyboardEvent): void {
+  const step = (e.shiftKey ? 4 : 1) * 16 * dir;
+  if (kind === "sidebar") resizeSidebar(step);
+  else resizeList(step);
+}
+
 function startDrag(kind: "sidebar" | "list", e: PointerEvent): void {
   e.preventDefault();
   const startX = e.clientX;
@@ -235,7 +249,10 @@ function startDrag(kind: "sidebar" | "list", e: PointerEvent): void {
     window.removeEventListener("pointerup", cleanup);
     window.removeEventListener("pointercancel", cleanup);
     dragging.value = false;
+    // 只在自己仍是当前拖拽时置空(多点触控可能已有后继拖拽接管该句柄)
+    if (activeDragCleanup === cleanup) activeDragCleanup = null;
   };
+  activeDragCleanup = cleanup; // 交由 onUnmounted 兜底(拖拽中卸载)
   handle.addEventListener("pointermove", move);
   handle.addEventListener("pointerup", cleanup);
   handle.addEventListener("pointercancel", cleanup);
@@ -261,10 +278,16 @@ function resetDivider(kind: "sidebar" | "list"): void {
       data-resize-handle="sidebar"
       role="separator"
       aria-orientation="vertical"
+      :aria-valuenow="settings.prefs.sidebarWidth"
+      :aria-valuemin="SIDEBAR_MIN"
+      :aria-valuemax="SIDEBAR_MAX"
+      tabindex="0"
       title="拖拽调节宽度,双击恢复默认"
       class="hidden w-1 shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-[var(--accent)] md:block dark:bg-neutral-800"
       @pointerdown="startDrag('sidebar', $event)"
       @dblclick="resetDivider('sidebar')"
+      @keydown.left.prevent="nudge('sidebar', -1, $event)"
+      @keydown.right.prevent="nudge('sidebar', 1, $event)"
     />
     <div class="flex min-h-0 min-w-0 flex-1">
       <div
@@ -279,10 +302,16 @@ function resetDivider(kind: "sidebar" | "list"): void {
         data-resize-handle="list"
         role="separator"
         aria-orientation="vertical"
+        :aria-valuenow="settings.prefs.listWidth"
+        :aria-valuemin="LIST_MIN"
+        :aria-valuemax="LIST_MAX"
+        tabindex="0"
         title="拖拽调节宽度,双击恢复默认"
         class="hidden w-1 shrink-0 cursor-col-resize bg-neutral-200 transition-colors hover:bg-[var(--accent)] md:block dark:bg-neutral-800"
         @pointerdown="startDrag('list', $event)"
         @dblclick="resetDivider('list')"
+        @keydown.left.prevent="nudge('list', -1, $event)"
+        @keydown.right.prevent="nudge('list', 1, $event)"
       />
       <ReaderPane v-if="reader.article" @close="closeArticle" />
       <div v-else class="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">选择左侧文章开始阅读</div>

@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { exportOpml, parseOpml, type OpmlFeed } from "@/modules/opml";
+import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 
 const router = useRouter();
@@ -36,6 +37,12 @@ async function discover() {
   }
 }
 
+// 订阅集合已变(加源 / OPML 导入):标记列表失效,返回阅读器时由 Inbox 自动重拉新文章
+// (UI 层标记,避免 store 间新依赖)
+function markListStale(): void {
+  useArticlesStore().markStale();
+}
+
 async function subscribe(urls: string[]) {
   const clean = urls.map((u) => u.trim()).filter(Boolean);
   if (clean.length === 0) return;
@@ -44,6 +51,7 @@ async function subscribe(urls: string[]) {
   failures.value = [];
   try {
     const r = await store.addFeeds(clean, categoryId.value);
+    markListStale();
     message.value = `成功添加 ${r.created} 个源`;
     failures.value = r.failed;
     candidates.value = [];
@@ -77,6 +85,7 @@ async function importOpml(e: Event) {
       created += r.created;
       failures.value.push(...r.failed);
     }
+    markListStale();
     message.value = `导入完成:成功 ${created} 个源`;
   } catch (err) {
     message.value = err instanceof Error ? err.message : "OPML 解析失败";
@@ -112,7 +121,7 @@ const tabCls = (active: boolean) =>
 <template>
   <div class="min-h-full bg-white dark:bg-neutral-950 dark:text-neutral-100">
     <div class="mx-auto max-w-2xl px-6 py-8">
-      <button class="mb-6 text-sm text-neutral-500 hover:underline" @click="router.push('/')">← 返回阅读器</button>
+      <button class="mb-6 text-sm text-neutral-500 hover:underline dark:text-neutral-400" @click="router.push('/')">← 返回阅读器</button>
       <h1 class="text-xl font-semibold">添加订阅</h1>
 
       <div class="mt-4 flex gap-2">
@@ -122,7 +131,7 @@ const tabCls = (active: boolean) =>
       </div>
 
       <div v-if="tab === 'single'" class="mt-6 space-y-3">
-        <p class="text-sm text-neutral-500">输入网站地址自动发现订阅源,或直接填写 feed 地址</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400">输入网站地址自动发现订阅源,或直接填写 feed 地址</p>
         <div class="flex gap-2">
           <input v-model="singleUrl" placeholder="https://example.com 或 https://example.com/feed.xml" class="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" @keydown.enter="discover" />
           <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="discover">发现</button>
@@ -133,11 +142,11 @@ const tabCls = (active: boolean) =>
             <button class="shrink-0 rounded-lg border border-neutral-300 px-3 py-1 text-xs dark:border-neutral-700" @click="subscribe([c.url])">订阅</button>
           </label>
         </div>
-        <button class="text-xs text-neutral-500 underline" @click="subscribe([singleUrl])">直接作为 feed 地址订阅</button>
+        <button class="text-xs text-neutral-500 underline dark:text-neutral-400" @click="subscribe([singleUrl])">直接作为 feed 地址订阅</button>
       </div>
 
       <div v-else-if="tab === 'batch'" class="mt-6 space-y-3">
-        <p class="text-sm text-neutral-500">每行一个 feed 地址(自动分批提交)</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400">每行一个 feed 地址(自动分批提交)</p>
         <textarea v-model="batchText" rows="8" class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" placeholder="https://a.com/feed&#10;https://b.com/rss" />
         <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
           批量订阅
@@ -145,7 +154,7 @@ const tabCls = (active: boolean) =>
       </div>
 
       <div v-else class="mt-6 space-y-4">
-        <label class="block rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+        <label class="block rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
           点击选择 OPML 文件导入
           <input type="file" accept=".opml,.xml" class="hidden" @change="importOpml" />
         </label>

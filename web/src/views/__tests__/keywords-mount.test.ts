@@ -113,6 +113,33 @@ async function mountKeywords(
   return { router, container, store };
 }
 
+// 详情页挂载:同一路由表,推入 /keywords/:id 后直接挂 KeywordDetail
+async function mountDetail(ruleId: string, rules: KeywordRule[] = [R1]): Promise<MountResult> {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/", component: { template: "<div>inbox</div>" } },
+      { path: "/keywords", component: Keywords },
+      { path: "/keywords/:id", component: KeywordDetail },
+    ],
+  });
+  await router.push(`/keywords/${ruleId}`);
+  await router.isReady();
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const pinia = createPinia();
+  const store = useAnalysisStore(pinia);
+  store.rules = rules.map((r) => ({ ...r }));
+  store.hitsByRule = { ...HITS };
+  const app = createApp(KeywordDetail);
+  app.use(pinia);
+  app.use(router);
+  app.mount(container);
+  mounted = { app, container };
+  await flush();
+  return { router, container, store };
+}
+
 // 模拟键入:设值 + input 事件(v-model)
 function setInput(el: HTMLInputElement, value: string): void {
   el.value = value;
@@ -236,5 +263,24 @@ describe("Keywords 挂载", () => {
     save.click();
     await nextTick();
     expect(store.rules).toHaveLength(1);
+  });
+});
+
+describe("KeywordDetail 挂载", () => {
+  it("hitsState=computing 时列表头部出现 [data-hits-computing]「本地匹配中…」,落地后消失", async () => {
+    const { container, store } = await mountDetail("r1");
+
+    // 初始 idle:不显示(计算中提示是条件渲染,不是常驻装饰)
+    expect(container.querySelector("[data-hits-computing]")).toBeNull();
+
+    store.hitsState = "computing";
+    await flush();
+    const hint = container.querySelector("[data-hits-computing]");
+    expect(hint).toBeTruthy();
+    expect(hint!.textContent).toContain("本地匹配中");
+
+    store.hitsState = "done";
+    await flush();
+    expect(container.querySelector("[data-hits-computing]")).toBeNull();
   });
 });

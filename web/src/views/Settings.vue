@@ -33,9 +33,12 @@ function onDelete(p: AiProvider): void {
     <h1 class="mt-4 text-xl font-semibold">设置</h1>
 
     <section class="mt-8">
-      <h2 class="text-base font-semibold">AI 服务商</h2>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="text-base font-semibold">AI 服务商</h2>
+        <span v-if="ai.providers.length >= 20" data-provider-limit class="text-xs text-neutral-500 dark:text-neutral-400">最多 20 个服务商</span>
+      </div>
       <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-        用于 AI 摘要 / 翻译。填写任意 OpenAI 兼容接口(预设可改);密钥默认只存本机浏览器,不随订阅数据上云。
+        用于 AI 摘要。填写任意 OpenAI 兼容接口(预设可改);密钥默认只存本机浏览器,不随订阅数据上云。
       </p>
 
       <div class="mt-4 space-y-2">
@@ -59,7 +62,7 @@ function onDelete(p: AiProvider): void {
             <p class="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{{ p.baseUrl }} · {{ p.model }}</p>
           </div>
           <span v-if="p.useProxy" class="shrink-0 rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">代理</span>
-          <span v-if="p.apiKey" class="shrink-0 text-xs text-neutral-400 dark:text-neutral-500">已存密钥</span>
+          <span v-if="p.apiKey" class="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">已存密钥</span>
           <button data-provider-edit class="shrink-0 rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800" @click="editing = p">编辑</button>
           <button data-provider-delete class="shrink-0 rounded-md px-2 py-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800" @click="onDelete(p)">删除</button>
         </div>
@@ -75,7 +78,14 @@ function onDelete(p: AiProvider): void {
         请选择一个默认服务商(行首单选),AI 摘要才会启用。
       </p>
 
-      <button data-new-provider class="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white" @click="creating = true">新增服务商</button>
+      <button
+        data-new-provider
+        class="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50"
+        :disabled="ai.providers.length >= 20"
+        @click="creating = true"
+      >
+        新增服务商
+      </button>
 
       <div class="mt-6 rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800">
         <label class="flex items-center gap-2 text-sm">

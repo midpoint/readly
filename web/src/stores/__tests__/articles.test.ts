@@ -132,6 +132,37 @@ describe("articles store", () => {
     }
   });
 
+  it("markStale 置位失效标记、fetchPage 成功路径清位(订阅变更后列表失效标记)", async () => {
+    vi.mocked(api).mockResolvedValue({ items: [item(1)], nextCursor: null });
+    const store = useArticlesStore();
+    expect(store.stale).toBe(false);
+
+    await store.load(true);
+    expect(store.stale).toBe(false); // 正常加载后不处于失效态
+
+    store.markStale(); // 加源成功等订阅集合变化 → UI 层置位
+    expect(store.stale).toBe(true);
+
+    await store.load(true); // 重拉成功后复位,避免每次 applyRouteQuery 都强制拉取
+    expect(store.stale).toBe(false);
+  });
+
+  it("分页(非 reset)不误清 stale:只有 reset 拉取成功才复位", async () => {
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/articles") return Promise.resolve({ items: [item(1)], nextCursor: "c1" });
+      return Promise.resolve({});
+    });
+    const store = useArticlesStore();
+    await store.load(true);
+    store.markStale();
+
+    await store.loadMore(); // 在途翻页请求:不得清位(否则返回阅读器时漏拉新源文章)
+    expect(store.stale).toBe(true);
+
+    await store.load(true); // reset 拉取成功复位
+    expect(store.stale).toBe(false);
+  });
+
   it("unreadOnly 开启时列表与分页请求携带 unread=1", async () => {
     vi.mocked(api).mockImplementation((path, opts) => {
       if (path === "/api/articles") {

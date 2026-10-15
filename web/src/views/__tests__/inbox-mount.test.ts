@@ -145,6 +145,22 @@ describe("Inbox 冷启动挂载", () => {
     expect(container.textContent).toContain(ARTICLE.title);
   });
 
+  it("订阅变更标记 stale 后回到 /:即使 filter 未变也强制重拉列表并复位标记", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.load(true); // 冷启动首屏已加载(filter 未变,loaded=true)
+    expect(articleQueries()).toHaveLength(1);
+
+    articles.markStale(); // 加源成功 → AddFeed 标记列表失效
+
+    const { container } = await mountInbox("/", pinia);
+    await flush();
+    expect(articleQueries()).toHaveLength(2); // 失效标记绕过 loaded 守卫,强制重拉
+    expect(useArticlesStore().stale).toBe(false); // 重拉成功复位
+    expect(container.textContent).toContain(ARTICLE.title);
+  });
+
   it("?view=unread 按 URL 过滤;同一 filter 的重复 applyRouteQuery 不再重复请求", async () => {
     const { router, container } = await mountInbox("/?view=unread");
     expect(articleQueries()).toHaveLength(1);

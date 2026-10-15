@@ -31,6 +31,9 @@ export const useArticlesStore = defineStore("articles", () => {
   const loading = ref(false);
   // 是否曾成功加载过:冷启动(URL 无参)时也需触发首次拉取,由 Inbox 的守卫消费
   const loaded = ref(false);
+  // 列表失效标记:订阅集合变化(加源成功等)后由 UI 层置位,Inbox 的 applyRouteQuery 消费并强制重拉;
+  // fetchPage 成功即复位,避免此后每次路由同步都重复拉取
+  const stale = ref(false);
   const view = ref<ArticleView>("all");
   const feedId = ref<number | null>(null);
   const categoryId = ref<number | null>(null);
@@ -58,8 +61,11 @@ export const useArticlesStore = defineStore("articles", () => {
           unread: useSettingsStore().prefs.unreadOnly ? 1 : undefined,
         },
       });
-      if (reset) items.value = page.items;
-      else {
+      if (reset) {
+        items.value = page.items;
+        // 仅 reset 拉取(首屏 / 切筛选 / 失效标记消费)成功才复位;在途翻页请求不得误清
+        stale.value = false;
+      } else {
         const seen = new Set(items.value.map((i) => i.id));
         items.value = [...items.value, ...page.items.filter((i) => !seen.has(i.id))];
       }
@@ -120,11 +126,18 @@ export const useArticlesStore = defineStore("articles", () => {
     if (target) Object.assign(target, patch);
   }
 
+  // 订阅集合已变(如加源成功):标记列表失效,回阅读器时自动重拉(UI 层标记,避免 store 间新依赖)
+  function markStale(): void {
+    stale.value = true;
+  }
+
   return {
     items,
     loading,
     hasMore,
     loaded,
+    stale,
+    markStale,
     view,
     feedId,
     categoryId,

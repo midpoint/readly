@@ -100,7 +100,7 @@ async function select(id: number) {
     <div
       class="sticky top-0 z-20 flex h-9 items-center justify-between gap-2 border-b border-neutral-200/70 bg-neutral-50/90 px-4 text-xs backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/90"
     >
-      <span class="truncate font-medium text-neutral-500">{{ scopeLabel }}</span>
+      <span class="truncate font-medium text-neutral-500" :title="scopeLabel">{{ scopeLabel }}</span>
       <div class="flex shrink-0 items-center gap-1">
         <button
           class="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
@@ -137,7 +137,7 @@ async function select(id: number) {
         @select="select"
       />
     </template>
-    <div v-if="articles.items.length === 0 && !articles.loading" class="p-10 text-center text-sm text-neutral-500">
+    <div v-if="articles.items.length === 0 && !articles.loading" class="p-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
       这里还没有文章
     </div>
     <div id="list-sentinel" class="h-8" />

@@ -23,7 +23,7 @@ const showThemePanel = ref(false);
 const ai = useAiStore();
 const showAiCard = ref(false);
 const showAiGuide = ref(false);
-const aiDegraded = ref(false); // 本轮生成以非 JSON 原文收束(summary 为 null)
+const aiDegraded = ref(false); // 本轮生成以非 JSON 原文收束(summary 为 null);仅在 state=done 下被消费,切文后旧续段不写
 // 流式视图:生成中,或本轮降级收束(展示原文 + 说明);其余情况有缓存即直接展示摘要卡
 const aiStreamView = computed(() => ai.summaryState === "loading" || (ai.summaryState === "done" && aiDegraded.value));
 ai.init();
@@ -40,8 +40,10 @@ async function runSummary(a: ArticleDetail): Promise<void> {
       lang: detectTextLang(a.title),
     })
     .catch(() => null);
+  // 切文(resetSummary)后旧续段不得写任何可见状态:先以文章 id 守卫(取消/复位结算的 raw 为空,不会走到降级)
+  if (reader.article?.id !== a.id) return;
   if (outcome?.summary) a.aiSummary = outcome.summary;
-  else if (outcome) aiDegraded.value = true; // 有原文无 summary:降级(旧摘要保留)
+  else if (outcome && ai.summaryState === "done") aiDegraded.value = true; // 有原文无 summary:降级(旧摘要保留)
 }
 
 function onAiButton(): void {
@@ -155,7 +157,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
       <header class="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-4">
           <button class="md:hidden shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700 dark:text-neutral-200" @click="emit('close')">← 返回</button>
-          <div class="min-w-0 text-xs text-neutral-500">
+          <div class="min-w-0 text-xs text-neutral-500 dark:text-neutral-400">
             <span>{{ reader.article.feedTitle }}</span>
             <span> · </span>
             <span>{{ new Date(reader.article.publishedAt).toLocaleString("zh-CN") }}</span>
@@ -193,7 +195,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
         </div>
         <h2 class="mt-2 text-xl font-semibold leading-snug dark:text-neutral-100">{{ reader.article.title }}</h2>
         <p v-if="reader.fullTextError" class="mt-1 text-xs text-red-600 dark:text-red-400">抓取失败:{{ reader.fullTextError }}</p>
-        <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
+        <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ reader.article.author }}</p>
       </header>
       <div class="relative flex min-h-0 flex-1">
         <div class="min-h-0 flex-1 overflow-y-auto">
@@ -221,7 +223,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             </div>
           </div>
           <div
-            v-else-if="showAiCard && ai.summaryState !== 'idle'"
+            v-else-if="showAiCard && aiStreamView"
             data-ai-stream-card
             class="mx-auto mt-3 w-full max-w-[var(--reader-width,720px)] rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800"
           >
@@ -240,7 +242,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
           <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>
-        <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
+        <div v-if="!html" class="p-6 text-sm text-neutral-500 dark:text-neutral-400">该文章没有可显示的正文,可尝试打开原文。</div>
         <ThemePanel v-if="showThemePanel" class="absolute inset-y-0 right-0 z-30 shadow-xl" @close="showThemePanel = false" />
       </div>
     </template>

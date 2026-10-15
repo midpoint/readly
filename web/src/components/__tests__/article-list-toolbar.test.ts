@@ -122,6 +122,11 @@ describe("ArticleList 顶部工具栏", () => {
     const container = await mountList(pinia);
     // 工具栏左侧显示当前范围(源标题)
     expect(container.textContent).toContain("示例源");
+    // 范围文案被 truncate 截断时,title 提供完整范围
+    const scopeSpan = container.querySelector<HTMLElement>(".sticky span.truncate")!;
+    expect(scopeSpan).toBeTruthy();
+    expect(scopeSpan.textContent?.trim()).toBe("示例源");
+    expect(scopeSpan.title).toBe("示例源");
     const queriesBefore = articleQueries().length;
 
     const button = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "全部标已读");
@@ -205,6 +210,7 @@ describe("ArticleList 顶部工具栏", () => {
     expect(toggle).toBeTruthy();
     expect(toggle!.textContent?.trim()).toBe("列表");
     expect(toggle!.title).toBe("切换为列表布局");
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 裁决:文案为「目标动作」,与 aria-pressed「当前状态」语义冲突,不设该属性
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
 
     toggle!.click();
@@ -212,6 +218,7 @@ describe("ArticleList 顶部工具栏", () => {
     expect(settings.prefs.articleLayout).toBe("list");
     expect(toggle!.textContent?.trim()).toBe("卡片");
     expect(toggle!.title).toBe("切换为卡片布局");
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 同上(布局切换后仍不设)
     // 纯展示切换:不重载列表,行内 data-layout 立即更新
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("list");
 
@@ -220,6 +227,20 @@ describe("ArticleList 顶部工具栏", () => {
     expect(settings.prefs.articleLayout).toBe("card");
     expect(toggle!.textContent?.trim()).toBe("列表");
     expect(toggle!.title).toBe("切换为列表布局");
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 双向:回到卡片布局仍不设
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
+  });
+
+  it("范围文案默认「全部文章」且带 title(未筛选时)", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    const scopeSpan = container.querySelector<HTMLElement>(".sticky span.truncate")!;
+    expect(scopeSpan).toBeTruthy();
+    expect(scopeSpan.textContent?.trim()).toBe("全部文章");
+    expect(scopeSpan.title).toBe("全部文章");
   });
 });

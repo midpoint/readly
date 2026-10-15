@@ -116,6 +116,7 @@ afterEach(() => {
   mounted?.container.remove();
   mounted = null;
   vi.useRealTimers();
+  vi.unstubAllGlobals(); // confirm 等桩不跨用例
 });
 
 describe("Sidebar 源入口", () => {
@@ -298,6 +299,36 @@ describe("Sidebar 源入口", () => {
     await flush();
     expect(container.textContent).toContain("源甲");
     expect(useSettingsStore().prefs.collapsedCategoryIds).not.toContain(1);
+  });
+
+  it("删除源:确认后 DELETE 并标记列表失效(与加源同款);取消则既不删也不标", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+    const articles = useArticlesStore();
+    expect(articles.stale).toBe(false);
+
+    // ① 取消:不删、不标记
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]')!.click();
+    await flush();
+    findButton(container, "删除")!.click();
+    await flush();
+    expect(confirmMock).toHaveBeenCalled();
+    expect(api).not.toHaveBeenCalledWith("/api/feeds/3", expect.objectContaining({ method: "DELETE" }));
+    expect(articles.stale).toBe(false);
+
+    // ② 确认:DELETE 成功后置位失效标记(返回阅读器时重拉列表)
+    confirmMock.mockReturnValue(true);
+    container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]')!.click();
+    await flush();
+    findButton(container, "删除")!.click();
+    await flush();
+    expect(api).toHaveBeenCalledWith("/api/feeds/3", expect.objectContaining({ method: "DELETE" }));
+    expect(articles.stale).toBe(true);
   });
 
   it("「快捷键」按钮打开帮助浮层开关(模块级单例)", async () => {
