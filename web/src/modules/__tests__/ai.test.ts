@@ -193,3 +193,72 @@ describe("chatStream", () => {
     }
   });
 });
+
+describe("mergeSignals 兼容回退", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("AbortSignal.any 缺失时仍能合并(任一侧 abort 均传导)", async () => {
+    const { mergeSignals } = await import("@/modules/ai");
+    const original = AbortSignal.any;
+    // @ts-expect-error 临时移除以走回退分支
+    AbortSignal.any = undefined;
+    try {
+      const caller = new AbortController();
+      const timeout = AbortSignal.timeout(50_000);
+      const merged = mergeSignals(caller.signal, timeout);
+      expect(merged.aborted).toBe(false);
+      expect(merged).not.toBe(caller.signal);
+      caller.abort();
+      expect(merged.aborted).toBe(true);
+
+      // 另一侧(超时信号)abort 同样传导,且 reason 保留
+      const caller2 = new AbortController();
+      const timeout2 = new AbortController();
+      const merged2 = mergeSignals(caller2.signal, timeout2.signal);
+      expect(merged2.aborted).toBe(false);
+      timeout2.abort(new DOMException("timed out", "TimeoutError"));
+      expect(merged2.aborted).toBe(true);
+      expect((merged2.reason as DOMException).name).toBe("TimeoutError");
+
+      // 无调用方 signal:退化单侧;b 已 aborted 时直接置 aborted
+      expect(mergeSignals(undefined, timeout2.signal).aborted).toBe(true);
+      const fresh = new AbortController();
+      expect(mergeSignals(undefined, fresh.signal).aborted).toBe(false);
+    } finally {
+      AbortSignal.any = original;
+    }
+  });
+
+  it("超时信号给出中文「请求超时」(fetch 抛 TimeoutError 时)", async () => {
+    // 贴近真实 fetch:收到 signal 的 abort 后以 signal.reason 拒绝(超时信号的 reason 即 DOMException TimeoutError)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            if (init.signal!.aborted) reject(init.signal!.reason);
+            else init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+          })
+      )
+    );
+    // 直连与代理两处同一映射:任一路径超时都收敛为中文文案(以 timeoutMs=20 缩短等待)
+    for (const useProxy of [false, true]) {
+      await expect(
+        collectChat(chatStream({ provider: providerOf({ useProxy }), messages: MSGS, timeoutMs: 20 }))
+      ).rejects.toThrow("请求超时");
+    }
+
+    // 取消(调用方 abort)reason 为 AbortError:原样抛出,store 依 controller.signal.aborted 静默收束
+    const caller = new AbortController();
+    const pending = collectChat(chatStream({ provider: providerOf(), messages: MSGS, signal: caller.signal }));
+    caller.abort();
+    const err: unknown = await pending.then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(DOMException);
+    expect((err as DOMException).name).toBe("AbortError");
+  });
+});

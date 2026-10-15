@@ -33,7 +33,10 @@ function onDelete(p: AiProvider): void {
     <h1 class="mt-4 text-xl font-semibold">设置</h1>
 
     <section class="mt-8">
-      <h2 class="text-base font-semibold">AI 服务商</h2>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="text-base font-semibold">AI 服务商</h2>
+        <span v-if="ai.providers.length >= 20" data-provider-limit class="text-xs text-neutral-500 dark:text-neutral-400">最多 20 个服务商</span>
+      </div>
       <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
         用于 AI 摘要 / 翻译。填写任意 OpenAI 兼容接口(预设可改);密钥默认只存本机浏览器,不随订阅数据上云。
       </p>
@@ -75,7 +78,14 @@ function onDelete(p: AiProvider): void {
         请选择一个默认服务商(行首单选),AI 摘要才会启用。
       </p>
 
-      <button data-new-provider class="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white" @click="creating = true">新增服务商</button>
+      <button
+        data-new-provider
+        class="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50"
+        :disabled="ai.providers.length >= 20"
+        @click="creating = true"
+      >
+        新增服务商
+      </button>
 
       <div class="mt-6 rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800">
         <label class="flex items-center gap-2 text-sm">

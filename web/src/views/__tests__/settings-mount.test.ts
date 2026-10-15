@@ -222,6 +222,30 @@ describe("Settings 挂载", () => {
     expect(container.querySelector("[data-provider-row]")).toBeNull();
   });
 
+  // 控制者追加:服务商 20 上限的入口反馈(sanitize 侧已在 20 截断,此处挡在新增入口并提示)
+  it("服务商满 20:data-new-provider 置灰并提示上限;删回 19 恢复可用", async () => {
+    const many: AiProvider[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `ai_${i}`,
+      name: `服务商${i}`,
+      baseUrl: `https://p${i}.example.com/v1`,
+      model: `m${i}`,
+      useProxy: false,
+    }));
+    const { container, store } = await mountSettings({ providers: many });
+
+    const btn = container.querySelector<HTMLButtonElement>("[data-new-provider]")!;
+    expect(btn.disabled).toBe(true);
+    expect(container.textContent).toContain("最多 20 个服务商");
+    btn.click();
+    await nextTick();
+    expect(container.querySelector("[data-provider-preset]")).toBeNull(); // 已置灰:点击不打开编辑器
+
+    store.providers = store.providers.slice(0, 19);
+    await nextTick();
+    expect(btn.disabled).toBe(false);
+    expect(container.textContent).not.toContain("最多 20 个服务商");
+  });
+
   it("侧栏入口:点「设置」→ 路由到 /settings", async () => {
     const router = createRouter({
       history: createMemoryHistory(),

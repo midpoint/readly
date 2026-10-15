@@ -23,7 +23,7 @@ const showThemePanel = ref(false);
 const ai = useAiStore();
 const showAiCard = ref(false);
 const showAiGuide = ref(false);
-const aiDegraded = ref(false); // 本轮生成以非 JSON 原文收束(summary 为 null)
+const aiDegraded = ref(false); // 本轮生成以非 JSON 原文收束(summary 为 null);仅在 state=done 下被消费,切文后旧续段不写
 // 流式视图:生成中,或本轮降级收束(展示原文 + 说明);其余情况有缓存即直接展示摘要卡
 const aiStreamView = computed(() => ai.summaryState === "loading" || (ai.summaryState === "done" && aiDegraded.value));
 ai.init();
@@ -40,8 +40,10 @@ async function runSummary(a: ArticleDetail): Promise<void> {
       lang: detectTextLang(a.title),
     })
     .catch(() => null);
+  // 切文(resetSummary)后旧续段不得写任何可见状态:先以文章 id 守卫(取消/复位结算的 raw 为空,不会走到降级)
+  if (reader.article?.id !== a.id) return;
   if (outcome?.summary) a.aiSummary = outcome.summary;
-  else if (outcome) aiDegraded.value = true; // 有原文无 summary:降级(旧摘要保留)
+  else if (outcome && ai.summaryState === "done") aiDegraded.value = true; // 有原文无 summary:降级(旧摘要保留)
 }
 
 function onAiButton(): void {
@@ -221,7 +223,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             </div>
           </div>
           <div
-            v-else-if="showAiCard && ai.summaryState !== 'idle'"
+            v-else-if="showAiCard && aiStreamView"
             data-ai-stream-card
             class="mx-auto mt-3 w-full max-w-[var(--reader-width,720px)] rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800"
           >

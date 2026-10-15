@@ -307,4 +307,74 @@ describe("ReaderPane AI 摘要", () => {
     expect(ai.summaryStream).toBe("");
     expect(useReaderStore().article!.aiSummary).toBeNull();
   });
+
+  // 控制者追加:生成失败(error 态)只出错误行,空流式卡收起,按钮回到可再点
+  it("生成失败:错误行渲染且组件不崩,流式卡收起", async () => {
+    await mountReader({});
+    vi.mocked(chatStream).mockImplementation(() =>
+      (async function* () {
+        throw new Error("服务商返回错误(HTTP 500)");
+      })()
+    );
+    aiButton().click();
+    await vi.waitFor(() => expect(host!.querySelector("[data-ai-error]")).not.toBeNull());
+
+    expect(host!.querySelector("[data-ai-error]")!.textContent).toContain("服务商返回错误(HTTP 500)");
+    expect(useAiStore().summaryState).toBe("error");
+    expect(host!.querySelector("[data-ai-card]")).toBeNull();
+    expect(host!.querySelector("[data-ai-stream-card]")).toBeNull();
+    expect(host!.querySelector("[data-ai-stream]")).toBeNull();
+    // 组件不崩:正文仍在
+    expect(host!.querySelector("h2")!.textContent).toContain("标题");
+    expect(useReaderStore().article!.aiSummary).toBeNull();
+    // 按钮恢复可点:再点即发起新一轮
+    expect(aiButton().textContent).toContain("AI 摘要");
+    expect(aiButton().disabled).toBe(false);
+    aiButton().click();
+    await nextTick();
+    expect(vi.mocked(chatStream)).toHaveBeenCalledTimes(2);
+  });
+
+  // 控制者追加:切文后旧续段落地不得写降级标记(文章 id 守卫);新文生成照常落缓存卡
+  it("切文后旧生成续段不写降级标记:新文成功仍走缓存卡", async () => {
+    await mountReader({});
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((r) => (releaseOld = r));
+    let releaseNew!: () => void;
+    const newGate = new Promise<void>((r) => (releaseNew = r));
+    vi.mocked(chatStream)
+      .mockImplementationOnce(() =>
+        (async function* () {
+          yield '{"one_liner":"旧';
+          await oldGate; // 忽略 abort:切文后仍会产出续段
+          yield '文","points":["x"]}';
+        })()
+      )
+      .mockImplementationOnce(() =>
+        (async function* () {
+          await newGate;
+          yield '{"one_liner":"新总结","points":["新"]}';
+        })()
+      );
+
+    aiButton().click(); // 文章 1:生成中
+    await flush();
+    expect(host!.querySelector("[data-ai-stream]")!.textContent).toContain('{"one_liner":"旧');
+
+    await useReaderStore().open(2); // 切文:在途作废
+    await nextTick();
+    aiButton().click(); // 文章 2:新一轮生成
+    await flush();
+    expect(aiButton().textContent).toContain("生成中…");
+
+    releaseOld(); // 文章 1 的旧续段此刻落地:不得写降级标记
+    await flush();
+    releaseNew(); // 文章 2 完成
+    await vi.waitFor(() => expect(host!.querySelector("[data-ai-card]")).not.toBeNull());
+
+    expect(host!.querySelector("[data-ai-card]")!.textContent).toContain("新总结");
+    expect(host!.textContent).not.toContain("模型未按 JSON 输出");
+    expect(host!.querySelector("[data-ai-stream]")).toBeNull();
+    expect(useReaderStore().article!.aiSummary).toEqual({ oneLiner: "新总结", points: ["新"] });
+  });
 });
