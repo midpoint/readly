@@ -2,11 +2,15 @@
 import { computed } from "vue";
 import type { ArticleListItem } from "@readly/shared";
 import { useAnalysisStore } from "@/stores/analysis";
+import { useSettingsStore } from "@/stores/settings";
 
 const props = defineProps<{ item: ArticleListItem; active: boolean }>();
 defineEmits<{ select: [id: number] }>();
 
 const analysis = useAnalysisStore();
+const settings = useSettingsStore();
+// 布局偏好(卡片/紧凑列表):组件自读 store,切换即时生效,无需父级重载
+const layout = computed(() => settings.prefs.articleLayout);
 const hitDots = computed(() => analysis.hitsFor(props.item.id).slice(0, 3));
 const hitMore = computed(() => Math.max(0, analysis.hitsFor(props.item.id).length - 3));
 const FALLBACK_DOT_COLOR = "#94a3b8";
@@ -33,8 +37,10 @@ function relative(iso: string): string {
 
 <template>
   <button
-    class="flex w-full gap-3 border-b border-neutral-100 px-4 py-3 text-left transition-colors dark:border-neutral-800"
-    :class="active ? 'bg-[var(--accent)]/10' : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'"
+    data-article-row
+    :data-layout="layout"
+    class="flex w-full gap-3 border-b border-neutral-100 px-4 text-left transition-colors dark:border-neutral-800"
+    :class="[layout === 'list' ? 'py-1.5' : 'py-3', active ? 'bg-[var(--accent)]/10' : 'hover:bg-neutral-100 dark:hover:bg-neutral-900']"
     @click="$emit('select', item.id)"
   >
     <div class="min-w-0 flex-1">
@@ -56,11 +62,20 @@ function relative(iso: string): string {
         <span v-if="item.isStarred" class="shrink-0 text-amber-500">★</span>
         <span v-if="item.isLater" class="shrink-0 text-sky-500">🕘</span>
       </div>
-      <h3 class="mt-1 line-clamp-2 text-sm font-medium" :class="item.isRead ? 'text-neutral-500' : 'text-neutral-900 dark:text-neutral-100'">
+      <h3
+        class="mt-1 text-sm font-medium"
+        :class="[layout === 'list' ? 'line-clamp-1' : 'line-clamp-2', item.isRead ? 'text-neutral-500' : 'text-neutral-900 dark:text-neutral-100']"
+      >
         {{ item.title }}
       </h3>
-      <p v-if="item.excerpt" class="mt-1 line-clamp-1 text-xs text-neutral-500">{{ item.excerpt }}</p>
+      <p v-if="layout === 'card' && item.excerpt" class="mt-1 line-clamp-1 text-xs text-neutral-500">{{ item.excerpt }}</p>
     </div>
-    <img v-if="item.imageUrl" :src="item.imageUrl" alt="" loading="lazy" class="h-14 w-14 shrink-0 rounded-lg object-cover" />
+    <img
+      v-if="layout === 'card' && item.imageUrl"
+      :src="item.imageUrl"
+      alt=""
+      loading="lazy"
+      class="h-14 w-14 shrink-0 rounded-lg object-cover"
+    />
   </button>
 </template>

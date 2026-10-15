@@ -34,6 +34,7 @@ describe("sanitizePrefs", () => {
       contentWidth: -5,
       fontFamily: "comic",
       autoMarkReadOnOpen: "yes",
+      articleLayout: "grid",
     });
     expect(p.themeMode).toBe(DEFAULT_READER_PREFS.themeMode);
     expect(p.accent).toBe(DEFAULT_READER_PREFS.accent);
@@ -47,6 +48,7 @@ describe("sanitizePrefs", () => {
     expect(p.collapsedCategoryIds).toEqual([]);
     expect(p.sidebarWidth).toBe(256);
     expect(p.listWidth).toBe(380);
+    expect(p.articleLayout).toBe("card");
   });
   it("sidebarWidth/listWidth 钳制与保留", () => {
     expect(sanitizePrefs({ sidebarWidth: 100 }).sidebarWidth).toBe(200);
@@ -65,12 +67,13 @@ describe("sanitizePrefs", () => {
     expect(sanitizePrefs(null)).toEqual(DEFAULT_READER_PREFS);
   });
   it("保留合法自定义值", () => {
-    const p = sanitizePrefs({ accent: "#22c55e", readingTheme: "night", fontSize: 19, autoMarkReadOnScroll: false, unreadOnly: true });
+    const p = sanitizePrefs({ accent: "#22c55e", readingTheme: "night", fontSize: 19, autoMarkReadOnScroll: false, unreadOnly: true, articleLayout: "list" });
     expect(p.accent).toBe("#22c55e");
     expect(p.readingTheme).toBe("night");
     expect(p.fontSize).toBe(19);
     expect(p.autoMarkReadOnScroll).toBe(false);
     expect(p.unreadOnly).toBe(true);
+    expect(p.articleLayout).toBe("list");
   });
 });
 

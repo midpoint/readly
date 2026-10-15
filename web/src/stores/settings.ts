@@ -38,6 +38,7 @@ export function sanitizePrefs(raw: unknown): ReaderPrefs {
       : [],
     sidebarWidth: clampNumber(o.sidebarWidth, 200, 420, d.sidebarWidth),
     listWidth: clampNumber(o.listWidth, 300, 600, d.listWidth),
+    articleLayout: o.articleLayout === "list" ? "list" : "card",
   };
 }
 

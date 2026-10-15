@@ -233,12 +233,14 @@ function startDrag(kind: "sidebar" | "list", e: PointerEvent): void {
     handle.removeEventListener("pointerup", cleanup);
     handle.removeEventListener("pointercancel", cleanup);
     window.removeEventListener("pointerup", cleanup);
+    window.removeEventListener("pointercancel", cleanup);
     dragging.value = false;
   };
   handle.addEventListener("pointermove", move);
   handle.addEventListener("pointerup", cleanup);
   handle.addEventListener("pointercancel", cleanup);
   window.addEventListener("pointerup", cleanup);
+  window.addEventListener("pointercancel", cleanup);
 }
 
 function resetDivider(kind: "sidebar" | "list"): void {

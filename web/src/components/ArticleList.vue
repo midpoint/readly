@@ -111,6 +111,14 @@ async function select(id: number) {
           只看未读
         </button>
         <button
+          data-layout-toggle
+          class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
+          :title="settings.prefs.articleLayout === 'list' ? '切换为卡片布局' : '切换为列表布局'"
+          @click="settings.updatePrefs({ articleLayout: settings.prefs.articleLayout === 'list' ? 'card' : 'list' })"
+        >
+          {{ settings.prefs.articleLayout === "list" ? "卡片" : "列表" }}
+        </button>
+        <button
           class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
           :disabled="markingAllRead"
           @click="markAllAsRead"
