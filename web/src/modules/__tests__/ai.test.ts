@@ -261,4 +261,33 @@ describe("mergeSignals 兼容回退", () => {
     expect(err).toBeInstanceOf(DOMException);
     expect((err as DOMException).name).toBe("AbortError");
   });
+
+  it("响应体读取期超时同样映射「请求超时」(SSE / 非流式两处 body)", async () => {
+    // 200 但 body 在 signal abort 时以 TimeoutError 拒绝:模拟超时发生在响应体读取期(reader.read / res.text)
+    const errorOnAbort = (contentType: string): void => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: RequestInit) =>
+          Promise.resolve(
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  const fail = (): void => controller.error(new DOMException("x", "TimeoutError"));
+                  if (init.signal!.aborted) fail();
+                  else init.signal!.addEventListener("abort", fail);
+                },
+              }),
+              { status: 200, headers: { "Content-Type": contentType } }
+            )
+          )
+        )
+      );
+    };
+    for (const contentType of ["text/event-stream", "application/json"]) {
+      errorOnAbort(contentType);
+      await expect(
+        collectChat(chatStream({ provider: providerOf(), messages: MSGS, timeoutMs: 20 }))
+      ).rejects.toThrow("请求超时");
+    }
+  });
 });

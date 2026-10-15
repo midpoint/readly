@@ -161,8 +161,13 @@ export async function* chatStream(opts: {
   }
   const ctype = res.headers.get("Content-Type") ?? "";
   if (!res.body || !ctype.includes("event-stream")) {
-    // 非流式回退:整段 JSON
-    const text = await res.text();
+    // 非流式回退:整段 JSON(体读取期超时同样映射文案)
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (e) {
+      throwMappedFetchError(e);
+    }
     try {
       const data = JSON.parse(text) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content;
@@ -172,13 +177,18 @@ export async function* chatStream(opts: {
       throw new Error("无法解析 AI 响应");
     }
   }
-  for await (const data of parseSseStream(res.body)) {
-    try {
-      const chunk = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (delta) yield delta;
-    } catch {
-      /* 忽略坏帧 */
+  // SSE 消费期(reader.read)超时同样映射为中文文案;坏帧仍逐帧忽略
+  try {
+    for await (const data of parseSseStream(res.body)) {
+      try {
+        const chunk = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) yield delta;
+      } catch {
+        /* 忽略坏帧 */
+      }
     }
+  } catch (e) {
+    throwMappedFetchError(e);
   }
 }
