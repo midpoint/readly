@@ -236,3 +236,97 @@ describe("分隔线:拖拽 → 偏好/变量", () => {
     expect(rootOf(container).style.getPropertyValue("--list-w")).toBe("380px");
   });
 });
+
+describe("分隔线:把手键盘可达", () => {
+  function arrow(key: "ArrowLeft" | "ArrowRight", shiftKey = false): KeyboardEvent {
+    return new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
+  }
+
+  it("把手可 Tab 聚焦(tabindex=0)且 ARIA 量值与钳制常量和当前宽度一致", async () => {
+    const { container } = await mountInbox("/?a=1", 1600);
+    const settings = useSettingsStore();
+
+    const sidebar = handleOf(container, "sidebar")!;
+    expect(sidebar.getAttribute("tabindex")).toBe("0");
+    expect(sidebar.getAttribute("aria-valuemin")).toBe(String(SIDEBAR_MIN));
+    expect(sidebar.getAttribute("aria-valuemax")).toBe(String(SIDEBAR_MAX));
+    expect(sidebar.getAttribute("aria-valuenow")).toBe(String(settings.prefs.sidebarWidth));
+    expect(sidebar.getAttribute("aria-valuenow")).toBe("256");
+
+    const list = handleOf(container, "list")!;
+    expect(list.getAttribute("tabindex")).toBe("0");
+    expect(list.getAttribute("aria-valuemin")).toBe(String(LIST_MIN));
+    expect(list.getAttribute("aria-valuemax")).toBe(String(LIST_MAX));
+    expect(list.getAttribute("aria-valuenow")).toBe("380");
+  });
+
+  it("ArrowRight +16、Shift+ArrowLeft -64:偏好、--side-w 与 aria-valuenow 同步更新", async () => {
+    const { container } = await mountInbox("/?a=1", 1600);
+    const settings = useSettingsStore();
+    const handle = handleOf(container, "sidebar")!;
+
+    const right = arrow("ArrowRight");
+    handle.dispatchEvent(right);
+    await nextTick();
+    expect(right.defaultPrevented).toBe(true); // .prevent:不触发页面横向滚动
+    expect(settings.prefs.sidebarWidth).toBe(272); // 256 + 16
+    expect(handle.getAttribute("aria-valuenow")).toBe("272");
+    expect(rootOf(container).style.getPropertyValue("--side-w")).toBe("272px");
+
+    handle.dispatchEvent(arrow("ArrowLeft", true));
+    await nextTick();
+    expect(settings.prefs.sidebarWidth).toBe(208); // 272 - 64(Shift ×4)
+    expect(handle.getAttribute("aria-valuenow")).toBe("208");
+    expect(rootOf(container).style.getPropertyValue("--side-w")).toBe("208px");
+  });
+
+  it("list 把手键盘同样生效(+64 → 444,再 -64 回 380)", async () => {
+    const { container } = await mountInbox("/?a=1", 1600);
+    const settings = useSettingsStore();
+    const handle = handleOf(container, "list")!;
+
+    handle.dispatchEvent(arrow("ArrowRight", true));
+    await nextTick();
+    expect(settings.prefs.listWidth).toBe(444); // 380 + 64
+    expect(handle.getAttribute("aria-valuenow")).toBe("444");
+
+    handle.dispatchEvent(arrow("ArrowLeft", true));
+    await nextTick();
+    expect(settings.prefs.listWidth).toBe(380);
+    expect(handle.getAttribute("aria-valuenow")).toBe("380");
+  });
+
+  it("键盘调整与拖拽同样受区间钳制(到上限 420 不再增长)", async () => {
+    const { container } = await mountInbox("/?a=1", 1600);
+    const settings = useSettingsStore();
+    const handle = handleOf(container, "sidebar")!;
+
+    handle.dispatchEvent(arrow("ArrowRight", true)); // 256 + 64 = 320
+    handle.dispatchEvent(arrow("ArrowRight", true)); // 384
+    handle.dispatchEvent(arrow("ArrowRight", true)); // 448 → 钳到 420
+    await nextTick();
+    expect(settings.prefs.sidebarWidth).toBe(SIDEBAR_MAX);
+    expect(handle.getAttribute("aria-valuenow")).toBe("420");
+  });
+
+  it("拖拽中卸载:撤除把手/window 监听,后续 pointermove 不再写偏好", async () => {
+    const { container } = await mountInbox("/?a=1", 1600);
+    const settings = useSettingsStore();
+    const handle = handleOf(container, "sidebar")!;
+
+    handle.dispatchEvent(pointer("pointerdown", 300));
+    await nextTick();
+    expect(rootOf(container).classList.contains("select-none")).toBe(true); // 确在拖拽中
+
+    // 拖拽未结束即卸载(如路由切走)
+    mounted!.app.unmount();
+    mounted!.container.remove();
+    mounted = null;
+    await nextTick();
+
+    handle.dispatchEvent(pointer("pointermove", 450));
+    window.dispatchEvent(pointer("pointerup", 450));
+    await nextTick();
+    expect(settings.prefs.sidebarWidth).toBe(256); // 监听已撤,未泄漏写偏好
+  });
+});
