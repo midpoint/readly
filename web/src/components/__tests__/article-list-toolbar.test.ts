@@ -210,7 +210,7 @@ describe("ArticleList 顶部工具栏", () => {
     expect(toggle).toBeTruthy();
     expect(toggle!.textContent?.trim()).toBe("列表");
     expect(toggle!.title).toBe("切换为列表布局");
-    expect(toggle!.getAttribute("aria-pressed")).toBe("false"); // 当前为卡片布局
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 裁决:文案为「目标动作」,与 aria-pressed「当前状态」语义冲突,不设该属性
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
 
     toggle!.click();
@@ -218,7 +218,7 @@ describe("ArticleList 顶部工具栏", () => {
     expect(settings.prefs.articleLayout).toBe("list");
     expect(toggle!.textContent?.trim()).toBe("卡片");
     expect(toggle!.title).toBe("切换为卡片布局");
-    expect(toggle!.getAttribute("aria-pressed")).toBe("true"); // 当前为列表布局
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 同上(布局切换后仍不设)
     // 纯展示切换:不重载列表,行内 data-layout 立即更新
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("list");
 
@@ -227,7 +227,7 @@ describe("ArticleList 顶部工具栏", () => {
     expect(settings.prefs.articleLayout).toBe("card");
     expect(toggle!.textContent?.trim()).toBe("列表");
     expect(toggle!.title).toBe("切换为列表布局");
-    expect(toggle!.getAttribute("aria-pressed")).toBe("false"); // 双向:回到卡片布局
+    expect(toggle!.getAttribute("aria-pressed")).toBeNull(); // 双向:回到卡片布局仍不设
     expect(container.querySelector("[data-article-row]")!.getAttribute("data-layout")).toBe("card");
   });
 

@@ -157,7 +157,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
       <header class="border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
         <div class="flex items-center justify-between gap-4">
           <button class="md:hidden shrink-0 whitespace-nowrap rounded-lg border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-700 dark:text-neutral-200" @click="emit('close')">← 返回</button>
-          <div class="min-w-0 text-xs text-neutral-500">
+          <div class="min-w-0 text-xs text-neutral-500 dark:text-neutral-400">
             <span>{{ reader.article.feedTitle }}</span>
             <span> · </span>
             <span>{{ new Date(reader.article.publishedAt).toLocaleString("zh-CN") }}</span>
@@ -195,7 +195,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
         </div>
         <h2 class="mt-2 text-xl font-semibold leading-snug dark:text-neutral-100">{{ reader.article.title }}</h2>
         <p v-if="reader.fullTextError" class="mt-1 text-xs text-red-600 dark:text-red-400">抓取失败:{{ reader.fullTextError }}</p>
-        <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500">{{ reader.article.author }}</p>
+        <p v-if="reader.article.author" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ reader.article.author }}</p>
       </header>
       <div class="relative flex min-h-0 flex-1">
         <div class="min-h-0 flex-1 overflow-y-auto">
@@ -242,7 +242,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
           <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>
-        <div v-if="!html" class="p-6 text-sm text-neutral-500">该文章没有可显示的正文,可尝试打开原文。</div>
+        <div v-if="!html" class="p-6 text-sm text-neutral-500 dark:text-neutral-400">该文章没有可显示的正文,可尝试打开原文。</div>
         <ThemePanel v-if="showThemePanel" class="absolute inset-y-0 right-0 z-30 shadow-xl" @close="showThemePanel = false" />
       </div>
     </template>

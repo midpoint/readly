@@ -113,7 +113,6 @@ async function select(id: number) {
         <button
           data-layout-toggle
           class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
-          :aria-pressed="settings.prefs.articleLayout === 'list'"
           :title="settings.prefs.articleLayout === 'list' ? '切换为卡片布局' : '切换为列表布局'"
           @click="settings.updatePrefs({ articleLayout: settings.prefs.articleLayout === 'list' ? 'card' : 'list' })"
         >
@@ -138,7 +137,7 @@ async function select(id: number) {
         @select="select"
       />
     </template>
-    <div v-if="articles.items.length === 0 && !articles.loading" class="p-10 text-center text-sm text-neutral-500">
+    <div v-if="articles.items.length === 0 && !articles.loading" class="p-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
       这里还没有文章
     </div>
     <div id="list-sentinel" class="h-8" />

@@ -44,7 +44,7 @@ function relative(iso: string): string {
     @click="$emit('select', item.id)"
   >
     <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2 text-xs text-neutral-500">
+      <div class="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
         <span v-if="!item.isRead" class="h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]" />
         <span class="truncate">{{ item.feedTitle }}</span>
         <span class="shrink-0">·</span>

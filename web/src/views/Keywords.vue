@@ -23,6 +23,7 @@ onMounted(() => {
     <button class="text-sm text-neutral-500 hover:underline dark:text-neutral-400" @click="router.push('/')">← 返回阅读器</button>
     <h1 class="mt-4 text-xl font-semibold">关键词</h1>
     <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">设置要监控的词语或正则表达式,文章列表会按规则标色;点规则名可查看命中文章。全程本地匹配,不联网、不上传。</p>
+    <p v-if="analysis.hitsState === 'computing'" data-hits-computing class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">本地匹配中…</p>
 
     <div class="mt-6 space-y-2">
       <div
