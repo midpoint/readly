@@ -87,9 +87,13 @@ export const useFeedsStore = defineStore("feeds", () => {
     return { processed };
   }
 
-  // 轻量刷新:仅更新侧栏计数,不重拉分类/订阅(阅读标已读后调用)
+  // 轻量刷新:仅更新侧栏计数,不重拉分类/订阅(阅读标已读后调用)。
+  // 源级徽标由 feeds[].unreadCount 承载(来源 /api/feeds),而阅读路径不重拉订阅列表,
+  // 故在此用 perFeed 就地同步,避免每次标已读都全量请求 /api/feeds(缺席的源即 0 未读)。
   async function refreshStats(): Promise<void> {
-    stats.value = await api<Stats>("/api/stats");
+    const s = await api<Stats>("/api/stats");
+    stats.value = s;
+    feeds.value = feeds.value.map((f) => ({ ...f, unreadCount: s.perFeed[f.id] ?? 0 }));
   }
 
   return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, refreshAll, refreshStats };

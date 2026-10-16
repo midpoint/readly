@@ -113,4 +113,31 @@ describe("feeds store", () => {
     expect(r.processed).toBe(3);
     expect(vi.mocked(api).mock.calls.filter(([p]) => p === "/api/refresh")).toHaveLength(2);
   });
+
+  it("refreshStats 就地同步各源 unreadCount(回归:源徽标在阅读后必须随 stats 一起更新)", async () => {
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/categories") return Promise.resolve([]);
+      if (path === "/api/feeds") {
+        return Promise.resolve([
+          { ...FEED, id: 1, unreadCount: 5 },
+          { ...FEED, id: 2, unreadCount: 3 },
+        ]);
+      }
+      if (path === "/api/stats") {
+        return Promise.resolve({ unreadTotal: 7, starredTotal: 0, laterTotal: 0, perFeed: { 1: 2 }, perCategory: {} });
+      }
+      return Promise.resolve([]);
+    });
+    const store = useFeedsStore();
+    await store.load();
+    expect(store.feeds.find((f) => f.id === 1)!.unreadCount).toBe(5);
+
+    await store.refreshStats();
+
+    // 源 1 读到只剩 2 未读;源 2 已清空(缺席于 perFeed 即 0);
+    // 且不得为此额外重拉 /api/feeds
+    expect(store.feeds.find((f) => f.id === 1)!.unreadCount).toBe(2);
+    expect(store.feeds.find((f) => f.id === 2)!.unreadCount).toBe(0);
+    expect(vi.mocked(api).mock.calls.filter(([p]) => p === "/api/feeds")).toHaveLength(1);
+  });
 });
