@@ -24,7 +24,9 @@ const editing = ref<AiProvider | null>(null);
 onMounted(() => {
   // 后台接线:本地切片就绪 + 首次无本地副本时采用服务端(失败静默,不阻塞首屏)
   ai.init();
-  void store.load().catch(() => undefined);
+  void store.load().catch(() => {
+    message.value = "订阅列表加载失败,导出可能不完整";
+  });
 });
 
 function onSave(patch: Omit<AiProvider, "id">): void {

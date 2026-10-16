@@ -341,4 +341,14 @@ describe("Settings 挂载", () => {
     expect(container.querySelector("[data-shortcut-help]")).not.toBeNull();
     useShortcutHelp().closeShortcutHelp(); // 复位单例,避免外溢
   });
+
+  it("订阅数据:列表加载失败时提示导出可能不完整(防静默空导出)", async () => {
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/categories" || path === "/api/feeds" || path === "/api/stats") return Promise.reject(new Error("boom"));
+      return Promise.resolve({});
+    });
+    const { container } = await mountSettings();
+    await flush();
+    expect(container.textContent).toContain("订阅列表加载失败,导出可能不完整");
+  });
 });
