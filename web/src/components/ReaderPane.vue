@@ -301,9 +301,14 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
   padding: 0.2em 0 0.2em 1em;
   border-left: 3px solid color-mix(in srgb, currentColor 30%, transparent);
 }
-.reader-body :deep(ul),
+/* Tailwind preflight 清零了列表样式,此处恢复项目符号(规格「靠项目符号对齐」的前提) */
+.reader-body :deep(ul) {
+  padding-left: 1.8em;
+  list-style: disc;
+}
 .reader-body :deep(ol) {
   padding-left: 1.8em;
+  list-style: decimal;
 }
 .reader-body :deep(li) {
   margin: 0.35em 0;
