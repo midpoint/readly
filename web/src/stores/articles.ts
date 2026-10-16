@@ -104,7 +104,16 @@ export const useArticlesStore = defineStore("articles", () => {
     const target = items.value.find((i) => i.id === id);
     if (target) Object.assign(target, patch);
     try {
-      await api(`/api/articles/${id}`, { method: "PATCH", body: patch });
+      // 线上协议为 snake_case(worker 路由读取 is_read/is_starred/is_later);
+      // 内部补丁沿用驼峰,仅在此咽喉点做映射,且不外发本地专用字段(hasFullText)
+      await api(`/api/articles/${id}`, {
+        method: "PATCH",
+        body: {
+          ...(patch.isRead !== undefined ? { is_read: patch.isRead } : {}),
+          ...(patch.isStarred !== undefined ? { is_starred: patch.isStarred } : {}),
+          ...(patch.isLater !== undefined ? { is_later: patch.isLater } : {}),
+        },
+      });
       if (patch.isRead === true && view.value === "unread") {
         items.value = items.value.filter((i) => i.id !== id);
       }

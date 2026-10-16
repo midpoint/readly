@@ -183,7 +183,7 @@ describe("?a= 深链打开即已读", () => {
 
     expect(detailGets()).toEqual(["/api/articles/2"]);
     expect(useReaderStore().article?.id).toBe(2);
-    expect(api).toHaveBeenCalledWith("/api/articles/2", { method: "PATCH", body: { isRead: true } });
+    expect(api).toHaveBeenCalledWith("/api/articles/2", { method: "PATCH", body: { is_read: true } });
     expect(container.textContent).toContain("文章 2");
   });
 

@@ -163,6 +163,23 @@ describe("articles store", () => {
     expect(store.stale).toBe(false);
   });
 
+  it("PATCH 线上协议为 snake_case(回归:驼峰字段被 worker 静默忽略,已读/收藏永远存不上)", async () => {
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/articles" && !opts?.method) return Promise.resolve({ items: [item(1)], nextCursor: null });
+      if (path === "/api/articles/1") return Promise.resolve({ isRead: true, isStarred: false, isLater: true });
+      return Promise.resolve({});
+    });
+    const store = useArticlesStore();
+    await store.load(true);
+
+    await store.setState(1, { isRead: true, isLater: true });
+
+    const call = vi.mocked(api).mock.calls.find(([p, o]) => p === "/api/articles/1" && o?.method === "PATCH")!;
+    // 与 worker 路由期望字段逐字一致;未提供的字段不得出现,本地专用的 hasFullText 不得外发
+    expect(call[1]!.body).toEqual({ is_read: true, is_later: true });
+    expect(Object.keys(call[1]!.body as Record<string, unknown>)).toEqual(["is_read", "is_later"]);
+  });
+
   it("unreadOnly 开启时列表与分页请求携带 unread=1", async () => {
     vi.mocked(api).mockImplementation((path, opts) => {
       if (path === "/api/articles") {
