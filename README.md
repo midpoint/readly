@@ -108,11 +108,15 @@ npx wrangler deploy
      # 把返回的 database_id 填入 worker/wrangler.toml,提交并推送
      ```
 
-   - 设置 Worker 访问令牌(本地执行一次,密钥跨部署保留):
+   - 设置访问令牌 `AUTH_TOKEN`(**必做**;未设置时任何人都能访问你的实例——Worker 不校验令牌)。密钥加密存储、跨部署保留,二选一:
 
-     ```bash
-     pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
-     ```
+     - **Cloudflare 面板(推荐,入口经官方文档核实)**:Workers & Pages → `readly` → **Settings → Variables and Secrets** → **Add** → 类型选 **Secret(加密)** → 名称填 `AUTH_TOKEN` → 填入你的访问口令 → **Deploy**。
+
+     - **命令行**(等价,本地执行一次即可):
+
+       ```bash
+       pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
+       ```
 
 完成后,每次 push 到 `main` 自动部署。免费额度:3,000 构建分钟/月(本项目构建约 1-2 分钟)。
 
