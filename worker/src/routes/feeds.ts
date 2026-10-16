@@ -218,7 +218,8 @@ feeds.patch("/feeds/:id", async (c) => {
           )
           .run();
       } catch {
-        // 并发窗口:新地址在预检后被他人占用(UNIQUE 兜底);已入库的新文章保留(仍属该源内容)
+        // 兜底:预检后新地址被并发抢走(UNIQUE 撞约束)时,已入库的新文章来自抢胜源、不再属于本源,
+        // 本源保持旧 URL,用户如介意可删源清理;其余瞬时 DB 错误亦落入此分支(错误区分待对齐 subscribeOne 模式)。
         return fail(c, 400, "already_subscribed", "已订阅该源");
       }
     }

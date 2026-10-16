@@ -41,6 +41,12 @@ describe("decodeWithCharset", () => {
     expect(decodeWithCharset(UTF8_NIHAO, "text/html; charset=x-mystery")).toBe("你好");
   });
 
+  it("头 charset 标签不被支持时级联到 XML 声明,而非直落 UTF-8", () => {
+    // x-mystery 不被支持 → 级联到声明里的 gbk → 正确解出中文;
+    // 若实现退化为「不支持直接落 UTF-8」,此断言会得到乱码而失败
+    expect(decodeWithCharset(DECL_GBK_MERGED, "application/xml; charset=x-mystery")).toContain("吾爱破解");
+  });
+
   it("无任何线索时按 UTF-8", () => {
     expect(decodeWithCharset(UTF8_NIHAO, "application/xml")).toBe("你好");
   });
