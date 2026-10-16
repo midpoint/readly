@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { ComponentPublicInstance } from "vue";
 import { useRouter } from "vue-router";
 import type { Feed } from "@readly/shared";
+import FeedUrlEditor from "@/components/FeedUrlEditor.vue";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
@@ -106,6 +107,12 @@ const menuFeedId = ref<number | null>(null);
 const menuMode = ref<"root" | "move">("root");
 const renamingId = ref<number | null>(null);
 const renameTitle = ref("");
+const editingUrlFeed = ref<Feed | null>(null);
+
+function startEditUrl(feed: Feed): void {
+  closeMenu();
+  editingUrlFeed.value = feed;
+}
 
 function closeMenu(): void {
   menuFeedId.value = null;
@@ -278,6 +285,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
           >
             <template v-if="menuMode === 'root'">
               <button :class="menuItem" @click="startRename(feed)">重命名</button>
+              <button :class="menuItem" @click="startEditUrl(feed)">编辑网址</button>
               <button :class="menuItem" @click="menuMode = 'move'">移动到</button>
               <button :class="[menuItem, 'text-red-600 dark:text-red-400']" @click="confirmDelete(feed)">删除</button>
             </template>
@@ -329,6 +337,7 @@ async function confirmDelete(feed: Feed): Promise<void> {
         >
           <template v-if="menuMode === 'root'">
             <button :class="menuItem" @click="startRename(feed)">重命名</button>
+            <button :class="menuItem" @click="startEditUrl(feed)">编辑网址</button>
             <button :class="menuItem" @click="menuMode = 'move'">移动到</button>
             <button :class="[menuItem, 'text-red-600 dark:text-red-400']" @click="confirmDelete(feed)">删除</button>
           </template>
@@ -365,5 +374,11 @@ async function confirmDelete(feed: Feed): Promise<void> {
         {{ refreshLabel }}
       </button>
     </div>
+    <FeedUrlEditor
+      v-if="editingUrlFeed"
+      :feed="editingUrlFeed"
+      @close="editingUrlFeed = null"
+      @saved="articles.markStale()"
+    />
   </aside>
 </template>

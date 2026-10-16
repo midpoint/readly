@@ -347,4 +347,48 @@ describe("Sidebar 源入口", () => {
     useShortcutHelp().closeShortcutHelp(); // 复位单例,避免污染其它用例
     expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
   });
+
+  it("⋯ 菜单「编辑网址」:弹窗预填当前地址;保存成功关闭并标记列表失效", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+    const articles = useArticlesStore();
+
+    container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]')!.click();
+    await flush();
+    findButton(container, "编辑网址")!.click();
+    await flush();
+    const input = container.querySelector<HTMLInputElement>("[data-feed-url]");
+    expect(input).toBeTruthy();
+    expect(input!.value).toBe(FEED.url); // 预填当前地址
+
+    await typeInto(input!, "https://new.example.com/rss");
+    container.querySelector<HTMLButtonElement>("[data-feed-url-save]")!.click();
+    await flush();
+
+    expect(api).toHaveBeenCalledWith("/api/feeds/3", { method: "PATCH", body: { url: "https://new.example.com/rss" } });
+    expect(container.querySelector("[data-feed-url]")).toBeNull(); // 成功关闭
+    expect(articles.stale).toBe(true); // 新地址可能补入新文章:列表失效,返回阅读器重拉
+  });
+
+  it("有分类的源:⋯ 菜单同样含「编辑网址」", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/api/categories") return Promise.resolve([{ id: 1, name: "科技", sortOrder: 0, createdAt: "2025-10-13T00:00:00.000Z" }]);
+      if (path === "/api/feeds") return Promise.resolve([{ ...FEED, id: 5, title: "分类源", categoryId: 1 }]);
+      if (path === "/api/stats") return Promise.resolve({ unreadTotal: 2, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+      if (path === "/api/articles") return Promise.resolve({ items: [], nextCursor: null });
+      return Promise.resolve(null);
+    });
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const container = await mountSidebar(pinia, flush);
+
+    container.querySelector<HTMLButtonElement>('button[aria-label="源管理菜单"]')!.click();
+    await flush();
+    expect(findButton(container, "编辑网址")).toBeTruthy();
+  });
 });
