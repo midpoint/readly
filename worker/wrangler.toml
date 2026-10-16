@@ -14,4 +14,4 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "readly"
-database_id = "PLACEHOLDER_REPLACE_AFTER_D1_CREATE"
+database_id = "13206adf-135f-4dbd-a43d-82ec7ce18451"
