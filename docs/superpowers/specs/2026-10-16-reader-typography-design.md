@@ -14,7 +14,7 @@
 | 段落 `<p>` | 首行缩进 2em;段距 0.8em(上下 margin) |
 | 正文基底 | 两端对齐;标点挤压 `text-spacing-trim: space-first`(渐进增强,旧浏览器无副作用);字距 `letter-spacing: 0.01em` |
 
-**非段落例外(不首行缩进)**:`blockquote` 内 `p`、`li` 内 `p`、`p:has(> img:only-child)`(纯图片段)、`pre`/`code`、`figure`/`figcaption`。
+**非段落例外(不首行缩进)**:`blockquote` 内 `p`、`li` 内 `p`、`p[data-img-only]`(纯图片段,经 sanitize 后处理打标)、`pre`/`code`、`figure`/`figcaption`。
 
 **西文文章**:保持现状(左对齐、段距 0——Tailwind preflight 现状、无缩进、无字距)——不做缩进与两端对齐。
 
