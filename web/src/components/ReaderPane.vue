@@ -79,14 +79,9 @@ const html = computed(() => {
   if (!a) return "";
   return sanitizeArticleHtml(useFull.value && a.contentFull ? a.contentFull : (a.content ?? ""));
 });
-// 中文版式判定:与 html 同源的渲染内容,复用 AI 模块的 detectTextLang(与入库侧同算法);
+// 中文版式判定:以「已消毒、即所渲染」的内容为源(与 html 同源;style/script 已被过滤);
 // 摘要/全文切换或抓取全文后随之重判
-const isZh = computed(() => {
-  const a = reader.article;
-  if (!a) return false;
-  const source = useFull.value && a.contentFull ? a.contentFull : (a.content ?? "");
-  return detectTextLang(aiTextOf(source)) === "zh";
-});
+const isZh = computed(() => detectTextLang(aiTextOf(html.value)) === "zh");
 watch(
   () => reader.article?.id,
   () => {
@@ -292,7 +287,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
 .reader-body.reader-zh :deep(figcaption) {
   text-indent: 0;
 }
-.reader-body.reader-zh :deep(p:has(> img:only-child)) {
+.reader-body.reader-zh :deep(p[data-img-only]) {
   text-indent: 0;
 }
 /* —— 语言无关的通用版式改进 —— */
@@ -313,8 +308,8 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
 .reader-body :deep(li) {
   margin: 0.35em 0;
 }
-/* 独立图片居中留白;行内图片(段落中的表情等)不受影响 */
-.reader-body :deep(p > img:only-child),
+/* 独立图片居中留白(经 sanitize 精确打标的纯图片段);段落内行内图零影响 */
+.reader-body :deep(p[data-img-only] img),
 .reader-body :deep(figure img) {
   display: block;
   margin: 1em auto;

@@ -24,4 +24,11 @@ describe("sanitizeArticleHtml", () => {
     expect(sanitizeArticleHtml(`<img data-src="data:text/html;base64,PHNjcmlwdD4=">`)).not.toMatch(/src="data:/);
     expect(sanitizeArticleHtml(`<img data-src="https://ex.com/i.png">`)).toContain('src="https://ex.com/i.png"');
   });
+
+  it("纯图片段打标:唯一元素子节点为 img 且无文本才标记 data-img-only", () => {
+    expect(sanitizeArticleHtml('<p><img src="https://a.example.com/x.png"></p>')).toContain('data-img-only="1"');
+    expect(sanitizeArticleHtml('<p>文字 <img src="https://a.example.com/x.png"></p>')).not.toContain("data-img-only");
+    expect(sanitizeArticleHtml('<p><img src="https://a.example.com/x.png"> 文字</p>')).not.toContain("data-img-only");
+    expect(sanitizeArticleHtml('<p><img src="https://a.example.com/x.png"><br></p>')).not.toContain("data-img-only");
+  });
 });

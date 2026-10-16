@@ -97,4 +97,12 @@ describe("ReaderPane 中文版式判定", () => {
     await nextTick();
     expect(bodyOf(el).classList.contains("reader-zh")).toBe(true);
   });
+
+  it("渲染集成:纯图片段带 data-img-only,文字段内单图不带", async () => {
+    const el = await mountWith({
+      content: '<p><img src="https://a.example.com/x.png"></p><p>文字 <img src="https://a.example.com/y.png"></p>',
+    });
+    const marked = el.querySelectorAll(".reader-body p[data-img-only]");
+    expect(marked).toHaveLength(1);
+  });
 });

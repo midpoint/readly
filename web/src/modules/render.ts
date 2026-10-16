@@ -29,5 +29,12 @@ export function sanitizeArticleHtml(html: string): string {
       img.setAttribute("src", dataSrc);
     }
   }
+  // 「纯图片段」精确打标:唯一元素子节点为 img 且无文本。CSS :only-child 不数文本节点,
+  // 会把「文字+单图」误判为纯图片段;此处按 textContent 精确判定。
+  for (const p of Array.from(root.querySelectorAll("p"))) {
+    if (p.children.length === 1 && p.children[0]!.tagName === "IMG" && p.textContent?.trim() === "") {
+      p.setAttribute("data-img-only", "1");
+    }
+  }
   return root.innerHTML;
 }
