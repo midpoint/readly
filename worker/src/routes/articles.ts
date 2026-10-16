@@ -172,27 +172,40 @@ articles.patch("/articles/:id", async (c) => {
 
 articles.post("/articles/mark-all-read", async (c) => {
   const body = await c.req
-    .json<{ scope?: { type?: unknown; id?: unknown } }>()
-    .catch(() => ({}) as { scope?: { type?: unknown; id?: unknown } });
+    .json<{ scope?: { type?: unknown; id?: unknown }; olderThanDays?: unknown }>()
+    .catch(() => ({}) as { scope?: { type?: unknown; id?: unknown }; olderThanDays?: unknown });
   const scope = body.scope;
   if (!scope || typeof scope.type !== "string" || !["all", "feed", "category"].includes(scope.type)) {
     return fail(c, 400, "invalid_scope", "scope 非法");
+  }
+  // 可选时间档:仅置读发布时间早于 now - N 天的未读文章;缺省不限(行为与既往逐字节一致)
+  let ageClause = "";
+  let cutoff: string | null = null;
+  if (body.olderThanDays !== undefined) {
+    const d = body.olderThanDays;
+    if (typeof d !== "number" || !Number.isInteger(d) || d < 1 || d > 36500) {
+      return fail(c, 400, "invalid_days", "天数非法");
+    }
+    cutoff = new Date(Date.now() - d * 86400000).toISOString();
+    ageClause = " AND a.published_at < ?";
   }
   const now = new Date().toISOString();
   let sql: string;
   let binds: (string | number)[] = [now, now];
   if (scope.type === "all") {
     sql = `INSERT INTO article_states (article_id, is_read, read_at, updated_at)
-           SELECT a.id, 1, ?, ? FROM articles a WHERE COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0
+           SELECT a.id, 1, ?, ? FROM articles a WHERE COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0${ageClause}
            ON CONFLICT(article_id) DO UPDATE SET is_read = 1, read_at = excluded.read_at, updated_at = excluded.updated_at`;
+    if (cutoff !== null) binds.push(cutoff);
   } else {
     if (typeof scope.id !== "number") return fail(c, 400, "invalid_scope", "缺少 id");
     const join = scope.type === "feed" ? "a.feed_id = ?" : "f.category_id = ?";
     sql = `INSERT INTO article_states (article_id, is_read, read_at, updated_at)
            SELECT a.id, 1, ?, ? FROM articles a JOIN feeds f ON f.id = a.feed_id
-           WHERE ${join} AND COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0
+           WHERE ${join} AND COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0${ageClause}
            ON CONFLICT(article_id) DO UPDATE SET is_read = 1, read_at = excluded.read_at, updated_at = excluded.updated_at`;
     binds = [now, now, scope.id];
+    if (cutoff !== null) binds.push(cutoff);
   }
   const res = await c.env.DB.prepare(sql).bind(...binds).run();
   return ok(c, { updated: res.meta.changes ?? 0 });

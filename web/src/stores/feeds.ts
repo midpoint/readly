@@ -65,8 +65,12 @@ export const useFeedsStore = defineStore("feeds", () => {
     await load();
   }
 
-  async function markAllRead(scope: { type: "all" | "feed" | "category"; id?: number }): Promise<number> {
-    const res = await api<{ updated: number }>("/api/articles/mark-all-read", { method: "POST", body: { scope } });
+  async function markAllRead(scope: { type: "all" | "feed" | "category"; id?: number }, olderThanDays?: number): Promise<number> {
+    // 契约:无时间档时请求体与既往逐字节一致(既有精确体测试守护)
+    const res = await api<{ updated: number }>("/api/articles/mark-all-read", {
+      method: "POST",
+      body: olderThanDays === undefined ? { scope } : { scope, olderThanDays },
+    });
     await load();
     return res.updated;
   }

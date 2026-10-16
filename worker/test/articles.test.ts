@@ -77,6 +77,45 @@ describe("articles API", () => {
     expect(detail.isStarred).toBe(true);
   });
 
+  it("标已读时间档:仅置读距今天数超过档位的未读文章", async () => {
+    const { feedId, ids } = await seed();
+    // ids[0..1] 改近(1 天前),ids[2..4] 保持 2025 旧日期(远超 30 天)
+    const recent = new Date(Date.now() - 86400000).toISOString();
+    await env.DB.prepare("UPDATE articles SET published_at = ? WHERE id = ?").bind(recent, ids[0]!).run();
+    await env.DB.prepare("UPDATE articles SET published_at = ? WHERE id = ?").bind(recent, ids[1]!).run();
+
+    // all scope + 30 天档
+    const r1 = await apiFetch("/api/articles/mark-all-read", { method: "POST", body: { scope: { type: "all" }, olderThanDays: 30 } });
+    expect(((await r1.json()) as { updated: number }).updated).toBe(3);
+    const near = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { isRead: boolean };
+    expect(near.isRead).toBe(false); // 近文保持未读
+    const old = (await (await apiFetch(`/api/articles/${ids[2]}`)).json()) as { isRead: boolean };
+    expect(old.isRead).toBe(true); // 旧文已置读
+  });
+
+  it("标已读时间档:feed 分支同样生效且不影响近文", async () => {
+    const { feedId, ids } = await seed();
+    const recent = new Date(Date.now() - 86400000).toISOString();
+    for (const id of [ids[0]!, ids[1]!]) {
+      await env.DB.prepare("UPDATE articles SET published_at = ? WHERE id = ?").bind(recent, id).run();
+    }
+    const r = await apiFetch("/api/articles/mark-all-read", { method: "POST", body: { scope: { type: "feed", id: feedId }, olderThanDays: 30 } });
+    expect(((await r.json()) as { updated: number }).updated).toBe(3);
+    const near = (await (await apiFetch(`/api/articles/${ids[0]}`)).json()) as { isRead: boolean };
+    expect(near.isRead).toBe(false);
+  });
+
+  it("标已读时间档:天数非法报 400 invalid_days,库内不变", async () => {
+    await seed();
+    for (const bad of [0, -1, 1.5, "3"] as unknown[]) {
+      const r = await apiFetch("/api/articles/mark-all-read", { method: "POST", body: { scope: { type: "all" }, olderThanDays: bad } });
+      expect(r.status).toBe(400);
+      expect(((await r.json()) as { error: { code: string } }).error.code).toBe("invalid_days");
+    }
+    const states = await env.DB.prepare("SELECT COUNT(*) c FROM article_states").first<{ c: number }>();
+    expect(states!.c).toBe(0);
+  });
+
   it("全文持久化与详情读取", async () => {
     const { ids } = await seed();
     await apiFetch(`/api/articles/${ids[0]}/fulltext`, { method: "POST", body: { content_full: "<p>提取的全文</p>" } });

@@ -32,9 +32,19 @@ const scopeLabel = computed(() => {
 
 const markingAllRead = ref(false);
 
-async function markAllAsRead(): Promise<void> {
+// 标已读时间档(发布日期早于 N 天的未读文章);菜单交互随侧栏 ⋯ 菜单同款
+const MARK_AGE_OPTIONS = [
+  { days: 3, label: "3 天以上标已读" },
+  { days: 7, label: "1 周以上标已读" },
+  { days: 30, label: "1 月以上标已读" },
+  { days: 365, label: "1 年以上标已读" },
+] as const;
+const markMenuOpen = ref(false);
+
+async function markAllAsRead(olderThanDays?: number): Promise<void> {
   if (markingAllRead.value) return;
   markingAllRead.value = true;
+  markMenuOpen.value = false;
   try {
     const scope: { type: "all" | "feed" | "category"; id?: number } =
       articles.feedId !== null
@@ -42,13 +52,21 @@ async function markAllAsRead(): Promise<void> {
         : articles.categoryId !== null
           ? { type: "category", id: articles.categoryId }
           : { type: "all" };
-    await feedsStore.markAllRead(scope);
+    await feedsStore.markAllRead(scope, olderThanDays);
     await articles.load(true);
   } catch {
     // 失败静默:侧栏计数与列表保持原状,可重试
   } finally {
     markingAllRead.value = false;
   }
+}
+
+function onDocumentClick(): void {
+  if (markMenuOpen.value) markMenuOpen.value = false;
+}
+
+function onDocumentKeydown(e: KeyboardEvent): void {
+  if (e.key === "Escape" && markMenuOpen.value) markMenuOpen.value = false;
 }
 
 async function toggleUnreadOnly(): Promise<void> {
@@ -63,6 +81,8 @@ async function toggleUnreadOnly(): Promise<void> {
 let observer: IntersectionObserver | null = null;
 
 onMounted(() => {
+  document.addEventListener("click", onDocumentClick);
+  document.addEventListener("keydown", onDocumentKeydown);
   observer = new IntersectionObserver((entries) => {
     if (entries.some((e) => e.isIntersecting)) void articles.loadMore().catch(() => undefined);
   });
@@ -70,7 +90,11 @@ onMounted(() => {
   if (sentinel) observer.observe(sentinel);
 });
 
-onUnmounted(() => observer?.disconnect());
+onUnmounted(() => {
+  document.removeEventListener("click", onDocumentClick);
+  document.removeEventListener("keydown", onDocumentKeydown);
+  observer?.disconnect();
+});
 
 // 与 Inbox.setArticleParam 同款:replace 被并发导航打断时下一拍重试一次
 function replaceQuery(query: LocationQueryRaw): void {
@@ -118,13 +142,42 @@ async function select(id: number) {
         >
           {{ settings.prefs.articleLayout === "list" ? "卡片" : "列表" }}
         </button>
-        <button
-          class="shrink-0 rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
-          :disabled="markingAllRead"
-          @click="markAllAsRead"
-        >
-          全部标已读
-        </button>
+        <div class="relative flex shrink-0 items-center">
+          <button
+            class="rounded-md px-2 py-1 font-medium text-neutral-500 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+            :disabled="markingAllRead"
+            @click="markAllAsRead()"
+          >
+            全部标已读
+          </button>
+          <button
+            data-mark-age-toggle
+            class="rounded-md px-1 py-1 font-medium text-neutral-400 hover:bg-neutral-200/60 disabled:opacity-50 dark:hover:bg-neutral-800"
+            :disabled="markingAllRead"
+            aria-label="更多标已读范围"
+            :aria-expanded="markMenuOpen"
+            @click.stop="markMenuOpen = !markMenuOpen"
+          >
+            ▾
+          </button>
+          <div
+            v-if="markMenuOpen"
+            data-mark-age-menu
+            class="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+            @click.stop
+          >
+            <button
+              v-for="opt in MARK_AGE_OPTIONS"
+              :key="opt.days"
+              :data-mark-age="opt.days"
+              class="block w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-neutral-800"
+              :disabled="markingAllRead"
+              @click="markAllAsRead(opt.days)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <template v-for="group in groups" :key="group.label">

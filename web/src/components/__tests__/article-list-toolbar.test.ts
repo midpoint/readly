@@ -144,6 +144,73 @@ describe("ArticleList 顶部工具栏", () => {
     expect(queries[queries.length - 1]!.feed_id).toBe(3);
   });
 
+  it("▾ 时间档菜单:选「1 月以上」发精确体(含 olderThanDays:30)并关闭菜单、重载列表", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const feedsStore = useFeedsStore();
+    await feedsStore.load();
+    const articles = useArticlesStore();
+    await articles.setFilter("all", FEED.id, null);
+    const container = await mountList(pinia);
+
+    const toggle = container.querySelector<HTMLButtonElement>("[data-mark-age-toggle]")!;
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    toggle.click();
+    await flush();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const menu = container.querySelector("[data-mark-age-menu]");
+    expect(menu).toBeTruthy();
+    expect(menu!.querySelectorAll("[data-mark-age]")).toHaveLength(4);
+
+    const queriesBefore = articleQueries().length;
+    container.querySelector<HTMLButtonElement>('[data-mark-age="30"]')!.click();
+    await flush();
+
+    // 契约:精确请求体(scope + olderThanDays),不多不少
+    expect(api).toHaveBeenCalledWith("/api/articles/mark-all-read", {
+      method: "POST",
+      body: { scope: { type: "feed", id: 3 }, olderThanDays: 30 },
+    });
+    expect(container.querySelector("[data-mark-age-menu]")).toBeNull(); // 选中即关
+    const queries = articleQueries();
+    expect(queries.length).toBe(queriesBefore + 1); // 列表重载
+    expect(queries[queries.length - 1]!.feed_id).toBe(3);
+  });
+
+  it("▾ 菜单:点外关闭,且不发请求", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    container.querySelector<HTMLButtonElement>("[data-mark-age-toggle]")!.click();
+    await flush();
+    expect(container.querySelector("[data-mark-age-menu]")).not.toBeNull();
+
+    document.body.click();
+    await flush();
+    expect(container.querySelector("[data-mark-age-menu]")).toBeNull();
+    expect(api).not.toHaveBeenCalledWith("/api/articles/mark-all-read", expect.anything());
+  });
+
+  it("▾ 菜单:Esc 关闭", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const articles = useArticlesStore();
+    await articles.setFilter("all", null, null);
+    const container = await mountList(pinia);
+
+    container.querySelector<HTMLButtonElement>("[data-mark-age-toggle]")!.click();
+    await flush();
+    expect(container.querySelector("[data-mark-age-menu]")).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush();
+    expect(container.querySelector("[data-mark-age-menu]")).toBeNull();
+  });
+
   it("日期分组头 sticky 偏移 top-9,钉在 36px 工具栏之下", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
