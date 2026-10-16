@@ -27,7 +27,7 @@
 
 ## 2. 语言判定(渲染侧、纯客户端)
 
-- 在 `ReaderPane` 对**当前渲染内容**(`contentFull ?? content ?? excerpt`,经 `aiTextOf` 剥标签截 6000 字)调用既有 `detectTextLang`(web/src/modules/ai.ts,与入库侧 `detectLang` 同算法):`"zh"` → 中文规则集;`"en"`/`null` → 西文。
+- 在 `ReaderPane` 对**当前渲染内容**(与 `html` computed 同源:`useFull && contentFull ? contentFull : content`,经 `aiTextOf` 剥标签截 6000 字)调用既有 `detectTextLang`(web/src/modules/ai.ts,与入库侧 `detectLang` 同算法):`"zh"` → 中文规则集;`"en"`/`null` → 西文。摘要/全文切换或抓取全文后随之重判。
 - 绑定方式:`.reader-body` 上按判定结果加 class `reader-zh`;切换文章时 reactive 重判。
 - 不依赖存储的 `article.lang`(渲染内容是什么,排版判定就以什么为准;避免入库判定与正文不符的错配)。
 
