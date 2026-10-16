@@ -4,7 +4,7 @@ import type { Env } from "../env";
 import { fail, ok } from "../respond";
 import { assertSafeUrl } from "../lib/ssrf";
 import { discoverFeeds } from "../lib/discover";
-import { fetchFeedIntoDb } from "../lib/refresh";
+import { fetchFeedIntoDb, type FetchIntoResult } from "../lib/refresh";
 
 const feeds = new Hono<{ Bindings: Env }>();
 
@@ -171,8 +171,60 @@ feeds.post("/feeds/:id/refresh", async (c) => {
 feeds.patch("/feeds/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const body = await c.req
-    .json<{ title?: unknown; categoryId?: unknown; sortOrder?: unknown }>()
-    .catch(() => ({}) as { title?: unknown; categoryId?: unknown; sortOrder?: unknown });
+    .json<{ title?: unknown; categoryId?: unknown; sortOrder?: unknown; url?: unknown }>()
+    .catch(() => ({}) as { title?: unknown; categoryId?: unknown; sortOrder?: unknown; url?: unknown });
+
+  // —— 改址(先于小字段;保存即抓取校验,失败整体拒绝,库内概不落笔) ——
+  let urlHandled = false;
+  if (typeof body.url === "string") {
+    const raw = body.url.trim();
+    if (!raw) return fail(c, 400, "invalid_url", "请提供网址");
+    let nextUrl: string;
+    try {
+      nextUrl = assertSafeUrl(raw).toString();
+    } catch (e) {
+      return fail(c, 400, "invalid_url", e instanceof Error ? e.message : "无效的 URL");
+    }
+    const current = await c.env.DB.prepare("SELECT id, url FROM feeds WHERE id = ?").bind(id).first<{ id: number; url: string }>();
+    if (!current) return fail(c, 404, "not_found", "订阅不存在");
+    if (nextUrl !== current.url) {
+      const taken = await c.env.DB.prepare("SELECT id FROM feeds WHERE url = ? AND id != ?").bind(nextUrl, id).first<{ id: number }>();
+      if (taken) return fail(c, 400, "already_subscribed", "已订阅该源");
+      // 空校验器抓新地址(旧 ETag/Last-Modified 对应旧 URL 不可复用);initialLimit 同添加订阅,响应耗时受控
+      let r: FetchIntoResult;
+      try {
+        r = await fetchFeedIntoDb(c.env.DB, { id, url: nextUrl, lastEtag: null, lastModified: null }, { initialLimit: 50 });
+      } catch (e) {
+        return fail(c, 502, "fetch_failed", e instanceof Error ? e.message : "抓取失败");
+      }
+      try {
+        await c.env.DB.prepare(
+          `UPDATE feeds SET url = ?, title = ?, site_url = ?, icon_url = ?, description = ?,
+             last_fetched_at = ?, next_refresh_at = ?, last_etag = ?, last_modified = ?,
+             error_count = 0, last_error = NULL
+           WHERE id = ?`
+        )
+          .bind(
+            nextUrl,
+            r.title ?? nextUrl,
+            r.siteUrl ?? null,
+            r.iconUrl ?? null,
+            r.description ?? null,
+            new Date().toISOString(),
+            new Date(Date.now() + 30 * 60_000).toISOString(),
+            r.etag ?? null,
+            r.lastModified ?? null,
+            id
+          )
+          .run();
+      } catch {
+        // 并发窗口:新地址在预检后被他人占用(UNIQUE 兜底);已入库的新文章保留(仍属该源内容)
+        return fail(c, 400, "already_subscribed", "已订阅该源");
+      }
+    }
+    urlHandled = true;
+  }
+
   // 先校验分类存在性再执行 UPDATE,避免外键约束错误 500(categoryId 为 null 表示移到未分类,合法)
   if (typeof body.categoryId === "number" && !(await categoryExists(c.env.DB, body.categoryId))) {
     return fail(c, 400, "invalid_category", "分类不存在");
@@ -191,19 +243,24 @@ feeds.patch("/feeds/:id", async (c) => {
     sets.push("sort_order = ?");
     values.push(body.sortOrder);
   }
-  if (sets.length === 0) return fail(c, 400, "nothing_to_update", "没有可更新字段");
-  values.push(id);
-  let changes = 0;
-  try {
-    const res = await c.env.DB.prepare(`UPDATE feeds SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
-    changes = res.meta.changes ?? 0;
-  } catch {
-    // 残余约束错误(如分类在存在性检查后被并发删除)兜底为 400 而非 500
-    return fail(c, 400, "invalid_category", "分类不存在");
+  if (sets.length === 0) {
+    // 仅有 url 且已走完改址流程(含 no-op)时,回读返回;其余「无字段」维持原 400
+    if (!urlHandled) return fail(c, 400, "nothing_to_update", "没有可更新字段");
+  } else {
+    values.push(id);
+    let changes = 0;
+    try {
+      const res = await c.env.DB.prepare(`UPDATE feeds SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
+      changes = res.meta.changes ?? 0;
+    } catch {
+      // 残余约束错误(如分类在存在性检查后被并发删除)兜底为 400 而非 500
+      return fail(c, 400, "invalid_category", "分类不存在");
+    }
+    if (!changes) return fail(c, 404, "not_found", "订阅不存在");
   }
-  if (!changes) return fail(c, 404, "not_found", "订阅不存在");
   const row = await c.env.DB.prepare(`${FEED_SELECT} WHERE f.id = ?`).bind(id).first<Row>();
-  return ok(c, toFeed(row!));
+  if (!row) return fail(c, 404, "not_found", "订阅不存在");
+  return ok(c, toFeed(row));
 });
 
 feeds.delete("/feeds/:id", async (c) => {
