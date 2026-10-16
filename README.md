@@ -37,7 +37,7 @@ docs/superpowers/  设计文档与分阶段实施计划(开发过程留档,含�
 ```bash
 pnpm install
 pnpm build                                # 先构建 web(worker 的 assets/测试都需要 web/dist)
-pnpm --filter @readly/worker d1:migrate:local
+pnpm --filter @readly/worker run d1:migrate:local
 pnpm dev          # 前端 5173 + worker 8787
 ```
 
@@ -97,7 +97,7 @@ npx wrangler deploy
    | Root directory | `/`(整仓:web 构建 + 根 lockfile) |
    | Build variable | `SKIP_DEPENDENCY_INSTALL` = `1` |
    | Build command | `pnpm install --frozen-lockfile && pnpm build` |
-   | Deploy command | `pnpm --filter @readly/worker d1:migrate:remote && pnpm --filter @readly/worker deploy` |
+   | Deploy command | `pnpm --filter @readly/worker run d1:migrate:remote && pnpm --filter @readly/worker run deploy` |
 
 3. **一次性准备**:
 
@@ -116,7 +116,7 @@ npx wrangler deploy
 
 完成后,每次 push 到 `main` 自动部署。免费额度:3,000 构建分钟/月(本项目构建约 1-2 分钟)。
 
-> 备注:若首跑时「D1 迁移」步骤报权限错(自动 Token 的迁移权限未在文档中明示),把迁移从 Deploy command 中移除即可(部署不受影响),迁移改为在本地执行 `pnpm --filter @readly/worker d1:migrate:remote`。
+> 备注:若首跑时「D1 迁移」步骤报权限错(自动 Token 的迁移权限未在文档中明示),把迁移从 Deploy command 中移除即可(部署不受影响),迁移改为在本地执行 `pnpm --filter @readly/worker run d1:migrate:remote`。
 
 ### 手动备用部署(GitHub Actions)
 

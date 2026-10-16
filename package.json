@@ -10,7 +10,7 @@
     "build": "pnpm --filter @readly/web build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "deploy": "pnpm build && pnpm --filter @readly/worker deploy"
+    "deploy": "pnpm build && pnpm --filter @readly/worker run deploy"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
