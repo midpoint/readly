@@ -82,30 +82,48 @@ npx wrangler deploy
 - Workers 免费版单次调用 CPU 约 10ms:刷新按 `refresh_batch_size`(默认 2)分批,cron 每分钟推进一批,客户端「刷新全部」会循环调用直至完成;订阅源较多(>50)时建议升级 Workers Paid。
 - D1 免费版 5GB/每日 500 万行读,个人使用充裕。
 
-## 自动部署(GitHub Actions)
+## 自动部署(Cloudflare Workers Builds)
 
-推送到 `main` 会自动执行:构建 → 类型检查 → 全量测试 → D1 迁移 → `wrangler deploy`(工作流见 `.github/workflows/deploy.yml`);也可在 GitHub 的 Actions 页手动触发。工作流检测到 `database_id` 仍是占位符时会**自动跳过部署**并给出提示。
+在 Cloudflare 后台把 Worker 连到本仓库后,push 到 `main` 即自动完成:安装依赖 → 构建 → D1 远端迁移 → `wrangler deploy`。构建在 Cloudflare 侧执行,**无需配置任何 API Token**(Workers Builds 会自动生成账户级 Token)。
 
-一次性准备:
+接入步骤:
 
-1. **创建 D1 并把 ID 写入配置**:
+1. **创建 Worker 并绑定仓库**:Cloudflare 后台 → Workers & Pages → *Create application* → *Import a repository*,授权 GitHub 并选择本仓库(若已有同名 Worker 则在其 **Settings → Builds → Connect**);项目名填 `readly`。
+2. **按下表配置**(monorepo 关键项):
 
-   ```bash
-   pnpm --filter @readly/worker exec wrangler d1 create readly
-   # 把返回的 database_id 填入 worker/wrangler.toml,提交并推送
-   ```
+   | 配置项 | 值 |
+   |---|---|
+   | Git branch | `main` |
+   | Root directory | `/`(整仓:web 构建 + 根 lockfile) |
+   | Build variable | `SKIP_DEPENDENCY_INSTALL` = `1` |
+   | Build command | `pnpm install --frozen-lockfile && pnpm build` |
+   | Deploy command | `pnpm --filter @readly/worker d1:migrate:remote && pnpm --filter @readly/worker deploy` |
 
-2. **设置 Worker 访问令牌**(本地执行一次即可,密钥跨部署保留,CI 不需要该值):
+3. **一次性准备**:
 
-   ```bash
-   pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
-   ```
+   - 创建 D1 并把 ID 写入配置:
 
-3. **在 GitHub 仓库添加两个 Secrets**(Settings → Secrets and variables → Actions):
-   - `CLOUDFLARE_API_TOKEN`:Cloudflare 后台 → My Profile → API Tokens → Create Token,选 “Edit Cloudflare Workers” 模板,并追加 **D1 → Edit** 权限
-   - `CLOUDFLARE_ACCOUNT_ID`:Cloudflare 后台右侧栏的 Account ID
+     ```bash
+     pnpm --filter @readly/worker exec wrangler d1 create readly
+     # 把返回的 database_id 填入 worker/wrangler.toml,提交并推送
+     ```
 
-完成后,每次 push 到 `main` 即自动部署。
+   - 设置 Worker 访问令牌(本地执行一次,密钥跨部署保留):
+
+     ```bash
+     pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
+     ```
+
+完成后,每次 push 到 `main` 自动部署。免费额度:3,000 构建分钟/月(本项目构建约 1-2 分钟)。
+
+> 备注:若首跑时「D1 迁移」步骤报权限错(自动 Token 的迁移权限未在文档中明示),把迁移从 Deploy command 中移除即可(部署不受影响),迁移改为在本地执行 `pnpm --filter @readly/worker d1:migrate:remote`。
+
+### 手动备用部署(GitHub Actions)
+
+`.github/workflows/deploy.yml` 保留为**仅手动触发**的备用通道(Actions 页 → Deploy to Cloudflare (manual fallback) → Run workflow;`worker/wrangler.toml` 的 `database_id` 仍为占位符时会友好跳过)。使用它需在仓库 Settings → Secrets and variables → Actions 配置两个 Secrets:
+
+- `CLOUDFLARE_API_TOKEN`:Cloudflare 后台 API Tokens,选 “Edit Cloudflare Workers” 模板并追加 **D1 → Edit** 权限
+- `CLOUDFLARE_ACCOUNT_ID`:Cloudflare 后台右侧栏的 Account ID
 
 ## 测试
 

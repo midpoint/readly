@@ -1,13 +1,11 @@
-# push 到 main 自动构建、测试、迁移并部署到 Cloudflare。
-# 一次性前置(见 README「自动部署(GitHub Actions)」):
+# 手动备用部署(日常自动部署走 Cloudflare Workers Builds,见 README「自动部署」)。
+# 在 Actions 页手动触发(workflow_dispatch);一次性前置:
 #   1) 仓库 Secrets:CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID
 #   2) worker/wrangler.toml 的 database_id 已替换占位符(wrangler d1 create readly)
 #   3) Worker 密钥 AUTH_TOKEN 已设置(wrangler secret put AUTH_TOKEN,一次性)
-name: Deploy to Cloudflare
+name: Deploy to Cloudflare (manual fallback)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
