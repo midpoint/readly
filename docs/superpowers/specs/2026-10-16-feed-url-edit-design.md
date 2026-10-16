@@ -42,8 +42,8 @@
 ## 5. 客户端
 
 - store `feeds.ts` 新增 `editFeedUrl(feedId, url)`:PATCH `{ url }` → `load()`(与 `renameFeed` 同款);错误向上抛给弹窗展示。
-- 新组件 `FeedUrlEditor.vue`:props `feed: Feed`,emits `close`;样式对齐 `RuleEditor/ProviderEditor`(`fixed inset-0 z-50` + `bg-black/40` + `@click.self` 关闭 + 深色文字/底色配对,纪律 2);URL 输入框预填当前地址;保存中禁用按钮;失败弹窗内红字就地报错并保持打开(如「已订阅该源」「抓取失败(HTTP 404)」「不允许访问内网地址」);成功关闭。弹窗直接调 store(错误需就地展示,不采用 RuleEditor 的 emit-save 分离式)。
-- `Sidebar.vue`:两个源列表(分类内 / 未分类)的 ⋯ 菜单各加「编辑网址」,顺序:重命名 / 编辑网址 / 移动到 / 删除;点击置 `editingUrlFeedId` 并收起菜单;保存成功关闭弹窗。
+- 新组件 `FeedUrlEditor.vue`:props `feed: Feed`,emits `close` / `saved`(保存成功先 `saved` 后 `close`);样式对齐 `RuleEditor/ProviderEditor`(`fixed inset-0 z-50` + `bg-black/40` + `@click.self` 关闭 + 深色文字/底色配对,纪律 2);URL 输入框预填当前地址;保存中禁用按钮;失败弹窗内红字就地报错并保持打开(如「已订阅该源」「抓取失败(HTTP 404)」「不允许访问内网地址」);成功关闭。弹窗直接调 store(错误需就地展示,不采用 RuleEditor 的 emit-save 分离式)。
+- `Sidebar.vue`:两个源列表(分类内 / 未分类)的 ⋯ 菜单各加「编辑网址」,顺序:重命名 / 编辑网址 / 移动到 / 删除;点击收起菜单并打开弹窗;保存成功关闭弹窗,并由 Sidebar 标记文章列表失效(`articles.markStale()`,与加源同款——新地址可能补入新文章,返回阅读器时重拉)。
 
 ## 6. 测试
 
