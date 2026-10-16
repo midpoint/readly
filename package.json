@@ -1,5 +1,7 @@
 {
   "name": "readly",
+  "description": "自托管 RSS 阅读器:Cloudflare Workers + D1 + Vue3 SPA",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "engines": { "node": ">=22" },

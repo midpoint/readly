@@ -11,3 +11,6 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# 过程留档与面板工件(设计/计划在 docs/,此处为执行台账与对照台)
+.superpowers/
