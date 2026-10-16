@@ -16,18 +16,18 @@
 
 **非段落例外(不首行缩进)**:`blockquote` 内 `p`、`li` 内 `p`、`p:has(> img:only-child)`(纯图片段)、`pre`/`code`、`figure`/`figcaption`。
 
-**西文文章**:保持现状(左对齐、默认段距 1em、无缩进、无字距)——不做缩进与两端对齐。
+**西文文章**:保持现状(左对齐、段距 0——Tailwind preflight 现状、无缩进、无字距)——不做缩进与两端对齐。
 
 **语言无关的通用改进(所有文章)**:
 - 引用块:整块左缩进 + 左侧 3px 竖线(`color-mix(in srgb, currentColor 30%, transparent)`);文字颜色**继承正文**(不引入新弱化色,对比度零回归)
-- 列表:`padding-left: 1.8em`;`li` 项距 0.35em
+- 列表:`padding-left: 1.8em`;`li` 项距 0.35em;项目符号/编号由本功能恢复(Tailwind preflight 全局清零 list-style:ul=disc、ol=decimal)
 - 图片:`display:block; margin: 1em auto`(居中 + 上下留白;现有 max-width/圆角不变)
 
 **数值**:`DEFAULT_READER_PREFS.lineHeight: 1.7 → 1.85`(全局默认,与语言无关;字号 17px、宽度 720px、字体族均不变;四个可调滑块不动)。
 
 ## 2. 语言判定(渲染侧、纯客户端)
 
-- 在 `ReaderPane` 对**当前渲染内容**(与 `html` computed 同源:`useFull && contentFull ? contentFull : content`,经 `aiTextOf` 剥标签截 6000 字)调用既有 `detectTextLang`(web/src/modules/ai.ts,与入库侧 `detectLang` 同算法):`"zh"` → 中文规则集;`"en"`/`null` → 西文。摘要/全文切换或抓取全文后随之重判。
+- 在 `ReaderPane` 对**当前渲染内容**(与 `html` computed 同源(对已消毒的 `html.value` 调用,style/script 已过滤),经 `aiTextOf` 剥标签截 6000 字)调用既有 `detectTextLang`(web/src/modules/ai.ts,与入库侧 `detectLang` 同算法):`"zh"` → 中文规则集;`"en"`/`null` → 西文。摘要/全文切换或抓取全文后随之重判。
 - 绑定方式:`.reader-body` 上按判定结果加 class `reader-zh`;切换文章时 reactive 重判。
 - 不依赖存储的 `article.lang`(渲染内容是什么,排版判定就以什么为准;避免入库判定与正文不符的错配)。
 
@@ -47,10 +47,10 @@
 - 用 `<br><br>` 分段的老式 RSS 文章没有 `<p>` 标签,不会获得缩进(仅受行距影响;无法可靠区分软换行)
 - 标点挤压需较新 Chrome;不支持时静默无效果
 - `:has()` 需现代 Chrome(项目既定目标环境)
-- 段落以图片开头且后跟文字时(`<p><img> text</p>`),缩进会作用于图片——罕见,接受
+- 纯图片段(经 sanitize 后处理打标 `data-img-only`:唯一元素子节点为 img 且无文本)居中且不缩进;`<p><a><img></a></p>` 形状与顶层裸 `<img>` 不适用居中规则(设计边界);「文字+单图」段落不再误伤(精确打标,而非 `:only-child`)
 
 ## 6. 验收
 
 - **样式契约测试**(jsdom):渲染中文文章 → `.reader-body` 含 `reader-zh`;渲染英文文章 → 不含;无文本内容(null)→ 不含。
 - **Chrome 浅/深实测**(纪律 1):中文文章在 classic 主题下截图实测——首行缩进、两端对齐、引用块竖线、列表不缩进、图片段不缩进逐项核验;英文文章截图确认无缩进、左对齐;对比度不回归(无新弱化色);暗色配对不回归。
-- 全量 403 项测试保绿 + typecheck + build。
+- 全量 409 项测试保绿(worker 143 + web 266)+ typecheck + build。
