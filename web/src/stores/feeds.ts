@@ -76,6 +76,12 @@ export const useFeedsStore = defineStore("feeds", () => {
     await load();
   }
 
+  // 改址:保存即抓取校验由服务端完成;失败(ApiError)向上抛,由弹窗就地展示且不重载
+  async function editFeedUrl(feedId: number, url: string): Promise<void> {
+    await api(`/api/feeds/${feedId}`, { method: "PATCH", body: { url } });
+    await load();
+  }
+
   // 服务端分批刷新,循环调用直至 done;100 次上限兜底防死循环
   async function refreshAll(): Promise<{ processed: number }> {
     let processed = 0;
@@ -96,5 +102,5 @@ export const useFeedsStore = defineStore("feeds", () => {
     feeds.value = feeds.value.map((f) => ({ ...f, unreadCount: s.perFeed[f.id] ?? 0 }));
   }
 
-  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, refreshAll, refreshStats };
+  return { categories, feeds, stats, loading, load, addFeeds, discover, createCategory, moveFeed, removeFeed, markAllRead, renameFeed, editFeedUrl, refreshAll, refreshStats };
 });

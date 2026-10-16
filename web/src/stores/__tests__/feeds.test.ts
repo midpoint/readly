@@ -140,4 +140,25 @@ describe("feeds store", () => {
     expect(store.feeds.find((f) => f.id === 2)!.unreadCount).toBe(0);
     expect(vi.mocked(api).mock.calls.filter(([p]) => p === "/api/feeds")).toHaveLength(1);
   });
+
+  it("editFeedUrl:精确请求体 { url },成功后重载;失败向上抛且不重载", async () => {
+    vi.mocked(api).mockImplementation((path, opts) => {
+      if (path === "/api/feeds/3" && opts?.method === "PATCH") return Promise.resolve(null);
+      if (path === "/api/categories") return Promise.resolve([]);
+      if (path === "/api/feeds") return Promise.resolve([{ ...FEED, url: "https://new.example.com/rss" }]);
+      if (path === "/api/stats") return Promise.resolve(EMPTY_STATS);
+      return Promise.resolve([]);
+    });
+    const store = useFeedsStore();
+    await store.editFeedUrl(3, "https://new.example.com/rss");
+    // 契约断言:请求体只含 url,不多不少(a935c3a 教训:逐字段钉死)
+    expect(api).toHaveBeenCalledWith("/api/feeds/3", { method: "PATCH", body: { url: "https://new.example.com/rss" } });
+    expect(store.feeds[0]!.url).toBe("https://new.example.com/rss"); // load() 后取服务端真相
+
+    // 失败:向上抛,且不再重载(load 不再被触发)
+    const feedCalls = vi.mocked(api).mock.calls.length;
+    vi.mocked(api).mockRejectedValueOnce(new Error("已订阅该源"));
+    await expect(store.editFeedUrl(3, "https://dup.example.com/rss")).rejects.toThrow("已订阅该源");
+    expect(vi.mocked(api).mock.calls.length).toBe(feedCalls + 1); // 仅 PATCH 一次,无后续 load
+  });
 });
