@@ -1,0 +1,67 @@
+# push 到 main 自动构建、测试、迁移并部署到 Cloudflare。
+# 一次性前置(见 README「自动部署(GitHub Actions)」):
+#   1) 仓库 Secrets:CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID
+#   2) worker/wrangler.toml 的 database_id 已替换占位符(wrangler d1 create readly)
+#   3) Worker 密钥 AUTH_TOKEN 已设置(wrangler secret put AUTH_TOKEN,一次性)
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 占位符守卫(D1 未创建时跳过部署)
+        id: guard
+        run: |
+          if grep -q "PLACEHOLDER_REPLACE_AFTER_D1_CREATE" worker/wrangler.toml; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo '::notice::跳过部署:worker/wrangler.toml 的 database_id 仍是占位符。请先运行 wrangler d1 create readly 并把返回的 database_id 写入 wrangler.toml 后重新推送;所需 Secrets 与步骤见 README「自动部署(GitHub Actions)」。'
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.guard.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 web(worker assets 前置)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm build
+
+      - name: 质量门(类型检查 + 全量测试)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm -r typecheck && pnpm -r test
+
+      - name: 应用 D1 迁移(远端,幂等)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm --filter @readly/worker d1:migrate:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: 部署到 Cloudflare
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm --filter @readly/worker deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

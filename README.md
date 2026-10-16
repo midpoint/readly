@@ -82,6 +82,31 @@ npx wrangler deploy
 - Workers 免费版单次调用 CPU 约 10ms:刷新按 `refresh_batch_size`(默认 2)分批,cron 每分钟推进一批,客户端「刷新全部」会循环调用直至完成;订阅源较多(>50)时建议升级 Workers Paid。
 - D1 免费版 5GB/每日 500 万行读,个人使用充裕。
 
+## 自动部署(GitHub Actions)
+
+推送到 `main` 会自动执行:构建 → 类型检查 → 全量测试 → D1 迁移 → `wrangler deploy`(工作流见 `.github/workflows/deploy.yml`);也可在 GitHub 的 Actions 页手动触发。工作流检测到 `database_id` 仍是占位符时会**自动跳过部署**并给出提示。
+
+一次性准备:
+
+1. **创建 D1 并把 ID 写入配置**:
+
+   ```bash
+   pnpm --filter @readly/worker exec wrangler d1 create readly
+   # 把返回的 database_id 填入 worker/wrangler.toml,提交并推送
+   ```
+
+2. **设置 Worker 访问令牌**(本地执行一次即可,密钥跨部署保留,CI 不需要该值):
+
+   ```bash
+   pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
+   ```
+
+3. **在 GitHub 仓库添加两个 Secrets**(Settings → Secrets and variables → Actions):
+   - `CLOUDFLARE_API_TOKEN`:Cloudflare 后台 → My Profile → API Tokens → Create Token,选 “Edit Cloudflare Workers” 模板,并追加 **D1 → Edit** 权限
+   - `CLOUDFLARE_ACCOUNT_ID`:Cloudflare 后台右侧栏的 Account ID
+
+完成后,每次 push 到 `main` 即自动部署。
+
 ## 测试
 
 ```bash
