@@ -140,8 +140,10 @@ describe("ArticleListItem 双布局", () => {
     expect(root.textContent).toContain("🕘");
     expect(hitDots(root)).toHaveLength(1);
     expect(hitDots(root)[0]!.getAttribute("data-rule-id")).toBe("r1");
-    // meta 行(来源·时间)保持
-    expect(root.textContent).toContain("示例源");
+    // 精简:不再渲染源名与时间(只显示标题+状态标记)
+    expect(root.textContent).not.toContain("示例源");
+    expect(root.textContent).not.toMatch(/刚刚|分钟前|小时前|天前|\d{4}\/\d{1,2}\/\d{1,2}/);
+    expect(root.textContent).toContain("待读文章");
   });
 
   it("两种布局下点击均 emit select", async () => {
@@ -159,5 +161,18 @@ describe("ArticleListItem 双布局", () => {
     list.root.click();
     await nextTick();
     expect(list.selects).toEqual([7]);
+  });
+
+  it("列表布局:命中超过 3 条时渲染 3 个色点 + 「+n」", async () => {
+    const pinia = makePinia();
+    const analysis = useAnalysisStore();
+    const rule = (id: string, color: string) => ({ id, name: id, keyword: "k", isRegex: false, caseSensitive: false, color, enabled: true });
+    analysis.rules = [rule("r1", "#ef4444"), rule("r2", "#22c55e"), rule("r3", "#f59e0b"), rule("r4", "#8b5cf6")];
+    analysis.hits = { 7: [{ ruleId: "r1", count: 1 }, { ruleId: "r2", count: 1 }, { ruleId: "r3", count: 1 }, { ruleId: "r4", count: 1 }] };
+    useSettingsStore().updatePrefs({ articleLayout: "list" });
+    const { root } = await mountItem(pinia);
+
+    expect(hitDots(root)).toHaveLength(3);
+    expect(root.textContent).toContain("+1");
   });
 });
