@@ -1,6 +1,7 @@
 import type { RefreshResult } from "@readly/shared";
 import { SETTING_KEYS } from "@readly/shared";
 import { fetchText } from "./http";
+import { decodeWithCharset } from "./charset";
 import { parseFeed } from "./feed-parser";
 import { getSetting } from "./settings";
 
@@ -41,7 +42,7 @@ export async function fetchFeedIntoDb(
   if (res.status === 304) return { inserted: 0, notModified: true };
   if (res.status < 200 || res.status >= 300) throw new Error(`抓取失败(HTTP ${res.status})`);
 
-  const parsed = parseFeed(res.body, res.headers.get("Content-Type"));
+  const parsed = parseFeed(decodeWithCharset(res.buffer, res.headers.get("Content-Type")), res.headers.get("Content-Type"));
   let items = parsed.items;
   if (opts.initialLimit !== undefined) {
     items = [...items].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, opts.initialLimit);

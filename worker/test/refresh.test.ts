@@ -46,6 +46,41 @@ describe("fetchFeedIntoDb", () => {
     expect(r.notModified).toBe(true);
     expect(r.inserted).toBe(0);
   });
+
+  it("GBK 源(头无 charset,声明 encoding=gbk)标题与文章标题正确解码", async () => {
+    const id = await insertFeed("https://gbk.example.com/rss");
+    const ascii = (s: string) => new TextEncoder().encode(s);
+    const GBK_WUAI = new Uint8Array([0xce, 0xe1, 0xb0, 0xae, 0xc6, 0xc6, 0xbd, 0xe2]); // 吾爱破解
+    const GBK_CESHI = new Uint8Array([0xb2, 0xe2, 0xca, 0xd4]); // 测试
+    const head = ascii(`<?xml version="1.0" encoding="gbk"?><rss version="2.0"><channel><title>`);
+    const mid = ascii(`</title><item><title>`);
+    const tail = ascii(`</title><guid>g1</guid><pubDate>Mon, 13 Oct 2025 08:00:00 GMT</pubDate></item></channel></rss>`);
+    const body = new Uint8Array(head.byteLength + GBK_WUAI.byteLength + mid.byteLength + GBK_CESHI.byteLength + tail.byteLength);
+    let off = 0;
+    for (const part of [head, GBK_WUAI, mid, GBK_CESHI, tail]) {
+      body.set(part, off);
+      off += part.byteLength;
+    }
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(body, { status: 200, headers: { "Content-Type": "application/xml" } }));
+    const r = await fetchFeedIntoDb(env.DB, { id, url: "https://gbk.example.com/rss", lastEtag: null, lastModified: null }, { fetchFn: fetchMock as unknown as typeof fetch });
+    expect(r.title).toBe("吾爱破解");
+    const row = await env.DB.prepare("SELECT title FROM articles WHERE feed_id = ?").bind(id).first<{ title: string }>();
+    expect(row!.title).toBe("测试");
+  });
+
+  it("charset 走 HTTP 头(gb2312)时同样正确解码", async () => {
+    const id = await insertFeed("https://gbk-header.example.com/rss");
+    const GBK_WUAI = new Uint8Array([0xce, 0xe1, 0xb0, 0xae, 0xc6, 0xc6, 0xbd, 0xe2]);
+    const head = new TextEncoder().encode(`<?xml version="1.0"?><rss version="2.0"><channel><title>`);
+    const tail = new TextEncoder().encode(`</title></channel></rss>`);
+    const body = new Uint8Array(head.byteLength + GBK_WUAI.byteLength + tail.byteLength);
+    body.set(head, 0);
+    body.set(GBK_WUAI, head.byteLength);
+    body.set(tail, head.byteLength + GBK_WUAI.byteLength);
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(body, { status: 200, headers: { "Content-Type": "application/xml; charset=gb2312" } }));
+    const r = await fetchFeedIntoDb(env.DB, { id, url: "https://gbk-header.example.com/rss", lastEtag: null, lastModified: null }, { fetchFn: fetchMock as unknown as typeof fetch });
+    expect(r.title).toBe("吾爱破解");
+  });
 });
 
 describe("refreshDueFeeds", () => {

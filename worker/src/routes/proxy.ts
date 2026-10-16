@@ -1,24 +1,12 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { fail, ok } from "../respond";
+import { decodeWithCharset } from "../lib/charset";
 import { fetchText, type FetchTextResult } from "../lib/http";
 
 const proxy = new Hono<{ Bindings: Env }>();
 
 const HTML_TYPES = ["text/html", "application/xhtml+xml"];
-
-export function decodeWithCharset(bytes: Uint8Array, contentType: string | null): string {
-  const m = /charset=([^\s;]+)/i.exec(contentType ?? "");
-  const charset = m?.[1]?.replace(/["']/g, "").toLowerCase();
-  if (charset && charset !== "utf-8" && charset !== "utf8") {
-    try {
-      return new TextDecoder(charset).decode(bytes);
-    } catch {
-      // workerd 不支持的编码名:回落 UTF-8
-    }
-  }
-  return new TextDecoder("utf-8").decode(bytes);
-}
 
 proxy.get("/proxy/html", async (c) => {
   const raw = c.req.query("url");

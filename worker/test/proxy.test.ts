@@ -1,7 +1,7 @@
 import { env, fetchMock } from "cloudflare:test";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { apiFetch } from "./helpers";
-import { decodeWithCharset } from "../src/routes/proxy";
+import { decodeWithCharset } from "../src/lib/charset";
 
 beforeAll(() => fetchMock.activate());
 afterAll(() => fetchMock.deactivate());
