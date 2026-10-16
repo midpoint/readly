@@ -79,6 +79,14 @@ const html = computed(() => {
   if (!a) return "";
   return sanitizeArticleHtml(useFull.value && a.contentFull ? a.contentFull : (a.content ?? ""));
 });
+// 中文版式判定:与 html 同源的渲染内容,复用 AI 模块的 detectTextLang(与入库侧同算法);
+// 摘要/全文切换或抓取全文后随之重判
+const isZh = computed(() => {
+  const a = reader.article;
+  if (!a) return false;
+  const source = useFull.value && a.contentFull ? a.contentFull : (a.content ?? "");
+  return detectTextLang(aiTextOf(source)) === "zh";
+});
 watch(
   () => reader.article?.id,
   () => {
@@ -239,7 +247,7 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
             <RouterLink to="/settings" class="text-sm text-[var(--accent-strong)] hover:underline">前往设置 →</RouterLink>
           </div>
           <p v-if="ai.summaryError" data-ai-error class="mx-auto mt-2 w-full max-w-[var(--reader-width,720px)] text-xs text-red-600 dark:text-red-400">{{ ai.summaryError }}</p>
-          <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" v-html="html" />
+          <article ref="articleBody" class="reader-body mx-auto w-full px-6 py-6" :class="{ 'reader-zh': isZh }" v-html="html" />
           <div ref="bottomSentinel" class="h-px" />
         </div>
         <div v-if="!html" class="p-6 text-sm text-neutral-500 dark:text-neutral-400">该文章没有可显示的正文,可尝试打开原文。</div>
@@ -266,5 +274,44 @@ watch(() => reader.article?.id, () => void nextTick(setupScrollObserver));
 }
 .reader-body :deep(a) {
   color: var(--reader-link, var(--accent));
+}
+/* —— 中文书籍派版式(reader-zh;西文不加此类,保持现状) —— */
+.reader-body.reader-zh {
+  text-align: justify;
+  text-spacing-trim: space-first; /* 标点挤压;旧浏览器忽略该属性,无副作用 */
+  letter-spacing: 0.01em;
+}
+.reader-body.reader-zh :deep(p) {
+  text-indent: 2em;
+  margin: 0.8em 0;
+}
+/* 非段落例外:不首行缩进 */
+.reader-body.reader-zh :deep(blockquote p),
+.reader-body.reader-zh :deep(li p),
+.reader-body.reader-zh :deep(pre),
+.reader-body.reader-zh :deep(figcaption) {
+  text-indent: 0;
+}
+.reader-body.reader-zh :deep(p:has(> img:only-child)) {
+  text-indent: 0;
+}
+/* —— 语言无关的通用版式改进 —— */
+.reader-body :deep(blockquote) {
+  margin: 1em 0;
+  padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid color-mix(in srgb, currentColor 30%, transparent);
+}
+.reader-body :deep(ul),
+.reader-body :deep(ol) {
+  padding-left: 1.8em;
+}
+.reader-body :deep(li) {
+  margin: 0.35em 0;
+}
+/* 独立图片居中留白;行内图片(段落中的表情等)不受影响 */
+.reader-body :deep(p > img:only-child),
+.reader-body :deep(figure img) {
+  display: block;
+  margin: 1em auto;
 }
 </style>

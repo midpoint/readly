@@ -161,7 +161,7 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   accent: "#3b82f6",
   readingTheme: "classic",
   fontSize: 17,
-  lineHeight: 1.7,
+  lineHeight: 1.85,
   contentWidth: 720,
   fontFamily: "system",
   autoMarkReadOnOpen: true,
