@@ -3,10 +3,20 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { AiProvider } from "@readly/shared";
 import ProviderEditor from "@/components/ProviderEditor.vue";
+import ShortcutHelp from "@/components/ShortcutHelp.vue";
+import { useShortcutHelp } from "@/composables/useShortcutHelp";
+import { exportOpml, parseOpml, type OpmlFeed } from "@/modules/opml";
 import { useAiStore } from "@/stores/ai";
+import { useArticlesStore } from "@/stores/articles";
+import { useFeedsStore } from "@/stores/feeds";
 
 const router = useRouter();
 const ai = useAiStore();
+const store = useFeedsStore();
+const { openShortcutHelp } = useShortcutHelp();
+const busy = ref(false);
+const message = ref("");
+const failures = ref<{ url: string; error: string }[]>([]);
 
 const creating = ref(false);
 const editing = ref<AiProvider | null>(null);
@@ -14,6 +24,7 @@ const editing = ref<AiProvider | null>(null);
 onMounted(() => {
   // 后台接线:本地切片就绪 + 首次无本地副本时采用服务端(失败静默,不阻塞首屏)
   ai.init();
+  void store.load().catch(() => undefined);
 });
 
 function onSave(patch: Omit<AiProvider, "id">): void {
@@ -24,6 +35,61 @@ function onSave(patch: Omit<AiProvider, "id">): void {
 function onDelete(p: AiProvider): void {
   if (!window.confirm(`删除服务商「${p.name}」?(未开启云同步时其密钥将永久丢失)`)) return;
   ai.removeProvider(p.id);
+}
+
+// 订阅集合已变(OPML 导入):标记文章列表失效,返回阅读器时由 Inbox 自动重拉
+function markListStale(): void {
+  useArticlesStore().markStale();
+}
+
+async function importOpml(e: Event): Promise<void> {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  busy.value = true;
+  message.value = "";
+  failures.value = [];
+  try {
+    const parsed = parseOpml(text);
+    let created = 0;
+    for (const cat of parsed.categories) {
+      const c = await store.createCategory(cat.name);
+      const r = await store.addFeeds(cat.feeds.map((f) => f.url), c.id);
+      created += r.created;
+      failures.value.push(...r.failed);
+    }
+    if (parsed.uncategorized.length > 0) {
+      const r = await store.addFeeds(parsed.uncategorized.map((f) => f.url), null);
+      created += r.created;
+      failures.value.push(...r.failed);
+    }
+    markListStale();
+    message.value = `导入完成:成功 ${created} 个源`;
+  } catch (err) {
+    message.value = err instanceof Error ? err.message : "OPML 解析失败";
+  } finally {
+    busy.value = false;
+  }
+}
+
+function doExport(): void {
+  const categories = store.categories.map((c) => ({
+    name: c.name,
+    feeds: store.feeds
+      .filter((f) => f.categoryId === c.id)
+      .map((f): OpmlFeed => ({ url: f.url, title: f.title, siteUrl: f.siteUrl })),
+  }));
+  const uncategorized = store.feeds
+    .filter((f) => f.categoryId === null)
+    .map((f): OpmlFeed => ({ url: f.url, title: f.title, siteUrl: f.siteUrl }));
+  if (uncategorized.length > 0) categories.push({ name: "未分类", feeds: uncategorized });
+  const xml = exportOpml(categories);
+  const blob = new Blob([xml], { type: "text/xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "readly-subscriptions.opml";
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 
@@ -106,6 +172,42 @@ function onDelete(p: AiProvider): void {
         </p>
       </div>
     </section>
+
+    <section class="mt-8">
+      <h2 class="text-base font-semibold">订阅数据</h2>
+      <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">OPML 是通用的订阅列表格式,可在其它阅读器间迁移。</p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <label class="cursor-pointer rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">
+          导入 OPML
+          <input type="file" accept=".opml,.xml" class="hidden" data-opml-import @change="importOpml" />
+        </label>
+        <button
+          data-opml-export
+          :disabled="busy"
+          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          @click="doExport"
+        >
+          导出全部订阅(OPML)
+        </button>
+      </div>
+      <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900">{{ message }}</div>
+      <ul v-if="failures.length" class="mt-2 space-y-1 text-xs text-red-600 dark:text-red-400">
+        <li v-for="f in failures" :key="f.url">{{ f.url }}:{{ f.error }}</li>
+      </ul>
+    </section>
+
+    <section class="mt-8">
+      <h2 class="text-base font-semibold">帮助</h2>
+      <button
+        data-shortcut-help-open
+        class="mt-4 rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        @click="openShortcutHelp"
+      >
+        查看快捷键
+      </button>
+    </section>
+
+    <ShortcutHelp />
 
     <ProviderEditor v-if="creating" @close="creating = false" @save="onSave" />
     <ProviderEditor v-else-if="editing" :initial="editing" @close="editing = null" @save="onSave" />

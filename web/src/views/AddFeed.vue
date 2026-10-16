@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { ref } from "vue";
 import { useRouter } from "vue-router";
-import { exportOpml, parseOpml, type OpmlFeed } from "@/modules/opml";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 
 const router = useRouter();
 const store = useFeedsStore();
 
-const tab = ref<"single" | "batch" | "opml">("single");
+const tab = ref<"single" | "batch">("single");
 const singleUrl = ref("");
 const candidates = ref<{ url: string; title: string; type: string }[]>([]);
 const batchText = ref("");
@@ -16,12 +15,6 @@ const categoryId = ref<number | null>(null);
 const busy = ref(false);
 const message = ref("");
 const failures = ref<{ url: string; error: string }[]>([]);
-
-onMounted(() => {
-  void store.load().catch(() => {
-    message.value = "订阅列表加载失败,导出可能不完整";
-  });
-});
 
 async function discover() {
   if (!singleUrl.value.trim()) return;
@@ -64,56 +57,6 @@ async function subscribe(urls: string[]) {
   }
 }
 
-async function importOpml(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  const text = await file.text();
-  busy.value = true;
-  message.value = "";
-  failures.value = [];
-  try {
-    const parsed = parseOpml(text);
-    let created = 0;
-    for (const cat of parsed.categories) {
-      const c = await store.createCategory(cat.name);
-      const r = await store.addFeeds(cat.feeds.map((f) => f.url), c.id);
-      created += r.created;
-      failures.value.push(...r.failed);
-    }
-    if (parsed.uncategorized.length > 0) {
-      const r = await store.addFeeds(parsed.uncategorized.map((f) => f.url), null);
-      created += r.created;
-      failures.value.push(...r.failed);
-    }
-    markListStale();
-    message.value = `导入完成:成功 ${created} 个源`;
-  } catch (err) {
-    message.value = err instanceof Error ? err.message : "OPML 解析失败";
-  } finally {
-    busy.value = false;
-  }
-}
-
-function doExport() {
-  const categories = store.categories.map((c) => ({
-    name: c.name,
-    feeds: store.feeds
-      .filter((f) => f.categoryId === c.id)
-      .map((f): OpmlFeed => ({ url: f.url, title: f.title, siteUrl: f.siteUrl })),
-  }));
-  const uncategorized = store.feeds
-    .filter((f) => f.categoryId === null)
-    .map((f): OpmlFeed => ({ url: f.url, title: f.title, siteUrl: f.siteUrl }));
-  if (uncategorized.length > 0) categories.push({ name: "未分类", feeds: uncategorized });
-  const xml = exportOpml(categories);
-  const blob = new Blob([xml], { type: "text/xml" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "readly-subscriptions.opml";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 const tabCls = (active: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${active ? "bg-[var(--accent)] text-white" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`;
 </script>
@@ -127,7 +70,6 @@ const tabCls = (active: boolean) =>
       <div class="mt-4 flex gap-2">
         <button :class="tabCls(tab === 'single')" @click="tab = 'single'">单个添加</button>
         <button :class="tabCls(tab === 'batch')" @click="tab = 'batch'">批量添加</button>
-        <button :class="tabCls(tab === 'opml')" @click="tab = 'opml'">OPML 导入/导出</button>
       </div>
 
       <div v-if="tab === 'single'" class="mt-6 space-y-3">
@@ -151,14 +93,6 @@ const tabCls = (active: boolean) =>
         <button :disabled="busy" class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" @click="subscribe(batchText.split('\n').map((s) => s.trim()).filter(Boolean))">
           批量订阅
         </button>
-      </div>
-
-      <div v-else class="mt-6 space-y-4">
-        <label class="block rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-          点击选择 OPML 文件导入
-          <input type="file" accept=".opml,.xml" class="hidden" @change="importOpml" />
-        </label>
-        <button class="rounded-lg border border-neutral-300 px-4 py-2 text-sm dark:border-neutral-700" @click="doExport">导出全部订阅(OPML)</button>
       </div>
 
       <div v-if="message" class="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-900 dark:text-neutral-100">{{ message }}</div>

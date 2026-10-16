@@ -4,7 +4,6 @@ import type { ComponentPublicInstance } from "vue";
 import { useRouter } from "vue-router";
 import type { Feed } from "@readly/shared";
 import FeedUrlEditor from "@/components/FeedUrlEditor.vue";
-import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useAnalysisStore } from "@/stores/analysis";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
@@ -13,7 +12,6 @@ import { useSettingsStore } from "@/stores/settings";
 const feedsStore = useFeedsStore();
 const articles = useArticlesStore();
 const settings = useSettingsStore();
-const { openShortcutHelp } = useShortcutHelp();
 const router = useRouter();
 
 const stats = computed(() => feedsStore.stats);
@@ -351,15 +349,6 @@ async function confirmDelete(feed: Feed): Promise<void> {
       </div>
     </div>
     <div class="border-t border-neutral-200 p-3 dark:border-neutral-800">
-      <button class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800" @click="router.push('/add')">
-        导入 / 导出 OPML
-      </button>
-      <button
-        class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
-        @click="openShortcutHelp"
-      >
-        快捷键
-      </button>
       <button
         class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800"
         @click="router.push('/settings')"

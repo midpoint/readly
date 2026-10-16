@@ -6,14 +6,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiProvider } from "@readly/shared";
 import { api } from "@/api/client";
 import Sidebar from "@/components/Sidebar.vue";
+import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { PROVIDER_PRESETS } from "@/modules/ai";
 import { useAiStore } from "@/stores/ai";
+import { useArticlesStore } from "@/stores/articles";
 import Settings from "@/views/Settings.vue";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
   return { ...actual, api: vi.fn() };
 });
+
+const OPML = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>订阅列表</title></head>
+  <body>
+    <outline text="科技">
+      <outline type="rss" text="少数派" title="少数派" xmlUrl="https://sspai.com/feed" htmlUrl="https://sspai.com"/>
+    </outline>
+    <outline text="独立源" type="rss" xmlUrl="https://blog.example.com/atom.xml" title="独立博客"/>
+  </body>
+</opml>`;
 
 const P1: AiProvider = {
   id: "ai_1",
@@ -85,7 +98,16 @@ function selectOption(el: HTMLSelectElement, value: string): void {
 beforeEach(() => {
   localStorage.clear();
   vi.mocked(api).mockReset();
-  vi.mocked(api).mockResolvedValue({});
+  vi.mocked(api).mockImplementation((path, opts) => {
+    if (path === "/api/categories" && opts?.method === "POST")
+      return Promise.resolve({ id: 1, name: "科技", sortOrder: 1, createdAt: "2026-01-01T00:00:00.000Z" });
+    if (path === "/api/feeds" && opts?.method === "POST") return Promise.resolve({ created: [{ id: 1 }], failed: [] });
+    if (path === "/api/categories") return Promise.resolve([]);
+    if (path === "/api/feeds") return Promise.resolve([]);
+    if (path === "/api/stats")
+      return Promise.resolve({ unreadTotal: 0, starredTotal: 0, laterTotal: 0, perFeed: {}, perCategory: {} });
+    return Promise.resolve({});
+  });
 });
 
 afterEach(() => {
@@ -272,5 +294,51 @@ describe("Settings 挂载", () => {
     entry!.click();
     await flush();
     expect(router.currentRoute.value.path).toBe("/settings");
+  });
+
+  it("订阅数据:导入 OPML 后标记列表失效并给出结果", async () => {
+    const { container } = await mountSettings(); // 内部 setActivePinia,之后才可用 store
+    const articles = useArticlesStore();
+    expect(articles.stale).toBe(false);
+
+    const input = container.querySelector<HTMLInputElement>("[data-opml-import]");
+    expect(input).toBeTruthy();
+    // jsdom 未实现 Blob.prototype.text();按组件消费面桩最小 File(text() 返回 OPML 文本)
+    const file = { name: "readly.opml", text: async () => OPML } as unknown as File;
+    Object.defineProperty(input!, "files", { value: [file], configurable: true });
+    input!.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    await flush();
+
+    // 1 分类(1 源)+ 1 未分类源
+    expect(container.textContent).toContain("导入完成:成功 2 个源");
+    expect(useArticlesStore().stale).toBe(true);
+  });
+
+  it("订阅数据:点导出触发 Blob 下载", async () => {
+    const createUrl = vi.fn(() => "blob:mock");
+    const revokeUrl = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { value: createUrl, configurable: true, writable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: revokeUrl, configurable: true, writable: true });
+    try {
+      const { container } = await mountSettings();
+      container.querySelector<HTMLButtonElement>("[data-opml-export]")!.click();
+      await flush();
+      expect(createUrl).toHaveBeenCalledTimes(1);
+      expect(revokeUrl).toHaveBeenCalledTimes(1);
+    } finally {
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+    }
+  });
+
+  it("帮助:点「查看快捷键」在设置页打开浮层(宿主自挂)", async () => {
+    const { container } = await mountSettings();
+    expect(container.querySelector("[data-shortcut-help]")).toBeNull();
+    container.querySelector<HTMLButtonElement>("[data-shortcut-help-open]")!.click();
+    await flush();
+    expect(useShortcutHelp().showShortcutHelp.value).toBe(true);
+    expect(container.querySelector("[data-shortcut-help]")).not.toBeNull();
+    useShortcutHelp().closeShortcutHelp(); // 复位单例,避免外溢
   });
 });

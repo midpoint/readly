@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Feed } from "@readly/shared";
 import { api } from "@/api/client";
 import Sidebar from "@/components/Sidebar.vue";
-import { useShortcutHelp } from "@/composables/useShortcutHelp";
 import { useArticlesStore } from "@/stores/articles";
 import { useFeedsStore } from "@/stores/feeds";
 import { useSettingsStore } from "@/stores/settings";
@@ -331,21 +330,17 @@ describe("Sidebar 源入口", () => {
     expect(articles.stale).toBe(true);
   });
 
-  it("「快捷键」按钮打开帮助浮层开关(模块级单例)", async () => {
+  it("底栏精简:仅保留 设置 与 刷新订阅,OPML/快捷键已移除", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     const feedsStore = useFeedsStore();
     await feedsStore.load();
     const container = await mountSidebar(pinia, flush);
 
-    const btn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("快捷键"));
-    expect(btn).toBeTruthy();
-    expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
-    btn!.click();
-    await flush();
-    expect(useShortcutHelp().showShortcutHelp.value).toBe(true);
-    useShortcutHelp().closeShortcutHelp(); // 复位单例,避免污染其它用例
-    expect(useShortcutHelp().showShortcutHelp.value).toBe(false);
+    expect(findButton(container, "设置")).toBeTruthy();
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent?.trim().startsWith("刷新订阅"))).toBe(true);
+    expect(findButton(container, "导入 / 导出 OPML")).toBeUndefined();
+    expect(findButton(container, "快捷键")).toBeUndefined();
   });
 
   it("⋯ 菜单「编辑网址」:弹窗预填当前地址;保存成功关闭并标记列表失效", async () => {
