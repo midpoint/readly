@@ -30,7 +30,7 @@ async function discover() {
   }
 }
 
-// 订阅集合已变(加源 / OPML 导入):标记列表失效,返回阅读器时由 Inbox 自动重拉新文章
+// 订阅集合已变(加源成功):标记列表失效,返回阅读器时由 Inbox 自动重拉新文章
 // (UI 层标记,避免 store 间新依赖)
 function markListStale(): void {
   useArticlesStore().markStale();

@@ -20,7 +20,7 @@ const items: { key: MoreKey; label: string; icon: string }[] = [
 
 function pick(key: MoreKey): void {
   if (key === "shortcuts") {
-    openShortcutHelp(); // 与侧栏「快捷键」同一条模块级单例链路
+    openShortcutHelp(); // 与 Inbox 内 ? 快捷键共用模块级单例链路(浮层由 Inbox/设置页宿主渲染)
   } else {
     void router.push(`/${key}`);
   }
