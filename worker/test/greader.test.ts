@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { GREADER_USERNAME, SETTING_KEYS } from "@readly/shared";
-import { deriveToken } from "../src/lib/greader";
+import { READ_TAG, STARRED_TAG, deriveToken } from "../src/lib/greader";
 import { putSetting } from "../src/lib/settings";
 
 const PASSWORD = "0123456789abcdef0123456789abcdef";
@@ -382,5 +382,157 @@ describe("文章流", () => {
     expect(res.status).toBe(200);
     const payload = (await res.json()) as { items: { id: string; title: string }[] };
     expect(payload.items.map((item) => item.title)).toEqual(["文章2", "文章1", "文章0"]);
+  });
+});
+
+async function stateOf(id: number): Promise<{ is_read: number; is_starred: number } | null> {
+  return env.DB.prepare("SELECT is_read, is_starred FROM article_states WHERE article_id = ?")
+    .bind(id)
+    .first<{ is_read: number; is_starred: number }>();
+}
+
+describe("写操作", () => {
+  it("edit-tag 批量已读/未读,保留收藏", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(3);
+    await env.DB.prepare("INSERT INTO article_states (article_id, is_starred, starred_at) VALUES (?, 1, '2026-10-01T00:00:00.000Z')")
+      .bind(ids[0])
+      .run();
+
+    const readBody = new URLSearchParams();
+    readBody.append("i", String(ids[0]));
+    readBody.append("i", String(ids[1]));
+    readBody.set("a", READ_TAG);
+    let res = await authed("/reader/api/0/edit-tag", { method: "POST", body: readBody });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("OK");
+    expect(await stateOf(ids[0]!)).toEqual({ is_read: 1, is_starred: 1 });
+    expect(await stateOf(ids[1]!)).toEqual({ is_read: 1, is_starred: 0 });
+
+    const unreadBody = new URLSearchParams();
+    unreadBody.set("i", String(ids[0]));
+    unreadBody.set("r", READ_TAG);
+    await authed("/reader/api/0/edit-tag", { method: "POST", body: unreadBody });
+    expect(await stateOf(ids[0]!)).toEqual({ is_read: 0, is_starred: 1 });
+  });
+
+  it("edit-tag 收藏/取消收藏并忽略 label", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(1);
+    await env.DB.prepare("INSERT INTO article_states (article_id, is_read, read_at) VALUES (?, 1, '2026-10-01T00:00:00.000Z')")
+      .bind(ids[0])
+      .run();
+
+    const save = new URLSearchParams();
+    save.set("i", String(ids[0]));
+    save.append("a", STARRED_TAG);
+    save.append("a", "user/-/label/科技");
+    await authed("/reader/api/0/edit-tag", { method: "POST", body: save });
+    expect(await stateOf(ids[0]!)).toEqual({ is_read: 1, is_starred: 1 });
+
+    const unsave = new URLSearchParams();
+    unsave.set("i", String(ids[0]));
+    unsave.set("r", STARRED_TAG);
+    await authed("/reader/api/0/edit-tag", { method: "POST", body: unsave });
+    expect(await stateOf(ids[0]!)).toEqual({ is_read: 1, is_starred: 0 });
+  });
+
+  it("edit-tag 支持长格式 ID 与不存在的 id", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(1);
+    const body = new URLSearchParams();
+    body.set("i", `tag:google.com,2005:reader/item/${ids[0]!.toString(16).padStart(16, "0")}`);
+    body.set("a", READ_TAG);
+    const res = await authed("/reader/api/0/edit-tag", { method: "POST", body });
+    expect(await res.text()).toBe("OK");
+    expect((await stateOf(ids[0]!))?.is_read).toBe(1);
+
+    const missing = new URLSearchParams();
+    missing.set("i", "999999");
+    missing.set("a", READ_TAG);
+    expect((await authed("/reader/api/0/edit-tag", { method: "POST", body: missing })).status).toBe(200);
+  });
+
+  it("edit-tag 批量超过 100 条(验证不触 D1 绑定参数上限)", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(120);
+    const body = new URLSearchParams();
+    for (const id of ids) body.append("i", String(id));
+    body.set("a", READ_TAG);
+    const res = await authed("/reader/api/0/edit-tag", { method: "POST", body });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("OK");
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM article_states WHERE is_read = 1").first<{ n: number }>();
+    expect(count?.n).toBe(120);
+  });
+
+  it("mark-all-as-read 按 feed/分类/全部/starred 与 ts 过滤", async () => {
+    await enable();
+    const category = await env.DB.prepare("INSERT INTO categories (name, sort_order) VALUES ('科技', 1)").run();
+    const categoryId = Number(category.meta.last_row_id);
+    const feed1 = await env.DB.prepare(
+      "INSERT INTO feeds (url, title, category_id, sort_order) VALUES ('https://f1.example.com/rss', '源1', ?, 1)"
+    ).bind(categoryId).run();
+    const feed2 = await env.DB.prepare(
+      "INSERT INTO feeds (url, title, sort_order) VALUES ('https://f2.example.com/rss', '源2', 2)"
+    ).run();
+    const feed1Id = Number(feed1.meta.last_row_id);
+    const feed2Id = Number(feed2.meta.last_row_id);
+    const a1 = await insertArticle(feed1Id, "a1", "2026-10-01T00:00:01.000Z");
+    const a2 = await insertArticle(feed1Id, "a2", "2026-10-01T00:00:02.000Z");
+    const b1 = await insertArticle(feed2Id, "b1", "2026-10-01T00:00:03.000Z");
+    const b2 = await insertArticle(feed2Id, "b2", "2026-10-01T00:00:04.000Z");
+    await env.DB.prepare("INSERT INTO article_states (article_id, is_starred) VALUES (?, 1)").bind(b2).run();
+
+    const feedBody = new URLSearchParams({
+      s: `feed/${feed1Id}`,
+      ts: String(Math.floor(Date.parse("2026-10-01T00:00:02.000Z") / 1000)),
+    });
+    let res = await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: feedBody });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("OK");
+    expect((await stateOf(a1))?.is_read).toBe(1);
+    expect((await stateOf(a2))?.is_read ?? 0).toBe(0); // published_at == ts,不早于
+    expect((await stateOf(b1))?.is_read ?? 0).toBe(0);
+
+    const labelBody = new URLSearchParams({
+      s: "user/-/label/科技",
+      ts: String(Math.floor(Date.parse("2026-10-01T00:00:03.000Z") / 1000)),
+    });
+    await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: labelBody });
+    expect((await stateOf(a2))?.is_read).toBe(1);
+
+    const starBody = new URLSearchParams({
+      s: "user/-/state/com.google/starred",
+      ts: String(Math.floor(Date.parse("2026-10-01T00:00:05.000Z") / 1000)),
+    });
+    await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: starBody });
+    expect((await stateOf(b2))?.is_read).toBe(1);
+
+    const allBody = new URLSearchParams({
+      s: "user/-/state/com.google/reading-list",
+      ts: String(Math.floor(Date.parse("2026-10-01T00:00:06.000Z") / 1000)),
+    });
+    await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: allBody });
+    expect((await stateOf(b1))?.is_read).toBe(1);
+
+    const invalid = new URLSearchParams({ s: "user/-/state/com.google/broadcast", ts: "1" });
+    const invalidRes = await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: invalid });
+    expect(invalidRes.status).toBe(200);
+    expect(await invalidRes.text()).toBe("OK");
+  });
+
+  it("mark-all-as-read 接受毫秒时间戳", async () => {
+    await enable();
+    const feed = await env.DB.prepare(
+      "INSERT INTO feeds (url, title) VALUES ('https://ms.example.com/rss', '毫秒源')"
+    ).run();
+    const id = await insertArticle(Number(feed.meta.last_row_id), "m1", "2026-10-01T00:00:01.000Z");
+    const body = new URLSearchParams({
+      s: `feed/${Number(feed.meta.last_row_id)}`,
+      ts: String(Date.parse("2026-10-01T00:00:02.000Z")),
+    });
+    await authed("/reader/api/0/mark-all-as-read", { method: "POST", body });
+    expect((await stateOf(id))?.is_read).toBe(1);
   });
 });

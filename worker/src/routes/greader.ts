@@ -394,4 +394,125 @@ greader.on(["GET", "POST"], "/reader/api/0/stream/items/contents", async (c) => 
   );
 });
 
+async function upsertReadState(db: D1Database, ids: number[], read: boolean): Promise<void> {
+  if (ids.length === 0) return;
+  const now = new Date().toISOString();
+  const jsonIds = JSON.stringify(ids);
+  if (read) {
+    await db
+      .prepare(
+        `INSERT INTO article_states (article_id, is_read, read_at, updated_at)
+         SELECT a.id, 1, ?, ? FROM articles a
+         WHERE a.id IN (SELECT value FROM json_each(?))
+         ON CONFLICT(article_id) DO UPDATE SET
+           is_read = 1, read_at = COALESCE(read_at, excluded.read_at), updated_at = excluded.updated_at`
+      )
+      .bind(now, now, jsonIds)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO article_states (article_id, is_read, read_at, updated_at)
+         SELECT a.id, 0, NULL, ? FROM articles a
+         WHERE a.id IN (SELECT value FROM json_each(?))
+         ON CONFLICT(article_id) DO UPDATE SET
+           is_read = 0, read_at = NULL, updated_at = excluded.updated_at`
+      )
+      .bind(now, jsonIds)
+      .run();
+  }
+}
+
+async function upsertStarredState(db: D1Database, ids: number[], starred: boolean): Promise<void> {
+  if (ids.length === 0) return;
+  const now = new Date().toISOString();
+  const jsonIds = JSON.stringify(ids);
+  if (starred) {
+    await db
+      .prepare(
+        `INSERT INTO article_states (article_id, is_starred, starred_at, updated_at)
+         SELECT a.id, 1, ?, ? FROM articles a
+         WHERE a.id IN (SELECT value FROM json_each(?))
+         ON CONFLICT(article_id) DO UPDATE SET
+           is_starred = 1, starred_at = COALESCE(starred_at, excluded.starred_at), updated_at = excluded.updated_at`
+      )
+      .bind(now, now, jsonIds)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO article_states (article_id, is_starred, starred_at, updated_at)
+         SELECT a.id, 0, NULL, ? FROM articles a
+         WHERE a.id IN (SELECT value FROM json_each(?))
+         ON CONFLICT(article_id) DO UPDATE SET
+           is_starred = 0, starred_at = NULL, updated_at = excluded.updated_at`
+      )
+      .bind(now, jsonIds)
+      .run();
+  }
+}
+
+greader.post("/reader/api/0/edit-tag", async (c) => {
+  const params = await collectParams(c);
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const raw of params.getAll("i")) {
+    const id = parseItemId(raw);
+    if (id === null || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= 1000) break;
+  }
+  const adds = params.getAll("a");
+  const removes = params.getAll("r");
+  if (ids.length > 0) {
+    if (adds.includes(READ_TAG)) await upsertReadState(c.env.DB, ids, true);
+    if (adds.includes(STARRED_TAG)) await upsertStarredState(c.env.DB, ids, true);
+    if (removes.includes(READ_TAG)) await upsertReadState(c.env.DB, ids, false);
+    if (removes.includes(STARRED_TAG)) await upsertStarredState(c.env.DB, ids, false);
+  }
+  return c.text("OK", 200, NO_STORE);
+});
+
+greader.post("/reader/api/0/mark-all-as-read", async (c) => {
+  const params = await collectParams(c);
+  const stream = parseStream(params.get("s") ?? "");
+  if (stream.empty) return c.text("OK", 200, NO_STORE);
+  const rawTs = Number(params.get("ts"));
+  let ts = Number.isFinite(rawTs) && rawTs > 0 ? rawTs : Date.now() / 1000;
+  if (ts > 1e10) ts /= 1000;
+  if (ts > 253402300799) ts = Date.now() / 1000;
+  const cutoff = new Date(ts * 1000).toISOString();
+
+  const where: string[] = [
+    "COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0",
+    "a.published_at < ?",
+  ];
+  const binds: (string | number)[] = [new Date().toISOString(), new Date().toISOString(), cutoff];
+  let join = "";
+  if (stream.feedId !== undefined) {
+    where.push("a.feed_id = ?");
+    binds.push(stream.feedId);
+  }
+  if (stream.categoryName !== undefined) {
+    join = " JOIN feeds f ON f.id = a.feed_id JOIN categories c ON c.id = f.category_id";
+    where.push("c.name = ?");
+    binds.push(stream.categoryName);
+  }
+  if (stream.starred) {
+    where.push("COALESCE((SELECT is_starred FROM article_states WHERE article_id = a.id), 0) = 1");
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO article_states (article_id, is_read, read_at, updated_at)
+     SELECT a.id, 1, ?, ? FROM articles a${join}
+     WHERE ${where.join(" AND ")}
+     ON CONFLICT(article_id) DO UPDATE SET
+       is_read = 1, read_at = excluded.read_at, updated_at = excluded.updated_at`
+  )
+    .bind(...binds)
+    .run();
+  return c.text("OK", 200, NO_STORE);
+});
+
 export default greader;
