@@ -8,6 +8,7 @@ import articles from "./routes/articles";
 import auth from "./routes/auth";
 import categories from "./routes/categories";
 import feeds from "./routes/feeds";
+import greader from "./routes/greader";
 import health from "./routes/health";
 import proxy from "./routes/proxy";
 import refreshRoutes from "./routes/refresh";
@@ -28,6 +29,7 @@ app.route("/api", stats);
 app.route("/api", settingsRoutes);
 app.route("/api", refreshRoutes);
 app.route("/api", proxy);
+app.route("/", greader);
 
 app.notFound((c) => fail(c, 404, "not_found", "接口不存在"));
 app.onError((err, c) => {
