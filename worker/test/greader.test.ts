@@ -288,6 +288,11 @@ describe("文章流", () => {
       await authed(`/reader/api/0/stream/items/ids?s=feed/${feedId}&n=3`)
     ).json()) as { itemRefs: { id: string }[] };
     expect(feedStream.itemRefs).toHaveLength(3);
+
+    const numericUser = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/1/state/com.google/reading-list&n=2&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(numericUser.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(0, 2));
   });
 
   it("items/ids:xt/it/ot/nt 过滤与未知流", async () => {
@@ -398,6 +403,27 @@ describe("文章流", () => {
       await authed("/reader/api/0/stream/contents/", { method: "POST", body: viaFormStream })
     ).json()) as { items: Record<string, unknown>[] };
     expect(viaForm.items.map((item) => item.title)).toEqual(["文章0", "文章1"]);
+
+    const numericUser = (await (
+      await authed("/reader/api/0/stream/contents/user/1/state/com.google/reading-list?n=1&r=o")
+    ).json()) as { items: Record<string, unknown>[] };
+    expect(numericUser.items.map((item) => item.title)).toEqual(["文章0"]);
+  });
+
+  it("stream/items/contents 解析左补零的无前缀 hex ID", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(30);
+    const target = ids.find((id) => {
+      const hex = id.toString(16).padStart(16, "0");
+      return hex.startsWith("0") && /^\d+$/.test(hex) && Number(hex) !== id;
+    });
+    expect(target).toBeDefined();
+    const bareHex = target!.toString(16).padStart(16, "0");
+    const body = (await (
+      await authed(`/reader/api/0/stream/items/contents?i=${bareHex}`)
+    ).json()) as { items: { id: string }[] };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.id).toBe(`tag:google.com,2005:reader/item/${bareHex}`);
   });
 
   it("stream/items/contents 支持长格式与十进制、保持顺序", async () => {

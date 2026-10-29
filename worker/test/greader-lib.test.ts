@@ -21,9 +21,11 @@ describe("parseItemId", () => {
     expect(parseItemId("tag:google.com,2005:reader/item/000000000000002a")).toBe(42);
     expect(parseItemId("000000000000002a")).toBe(42);
     expect(parseItemId("42")).toBe(42);
-    // 全数字串按十进制处理,避免 16 位十进制 ID 被误判为 hex
+    // 16 位十进制 ID 无前导 0,按十进制处理
     expect(parseItemId("1746307865812560")).toBe(1746307865812560);
-    expect(parseItemId("0000000000000010")).toBe(10);
+    // Reeder 会回传 16 位左补零的无前缀 hex;有前导 0 时按 hex 处理
+    expect(parseItemId("0000000000000010")).toBe(16);
+    expect(parseItemId("000000000000001f")).toBe(31);
   });
   it("非法/非正返回 null", () => {
     expect(parseItemId("")).toBeNull();

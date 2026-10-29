@@ -5,7 +5,7 @@
 - 前端:Vue 3 + Pinia + Tailwind CSS v4(PWA)
 - 后端:Cloudflare Worker + D1(单 Worker 部署,含静态资源)
 - 运行时:除可选的 AI 服务商外,无第三方运行时服务
-- 测试:459 项(worker 180 + web 279)
+- 测试:460 项(worker 181 + web 279)
 - 许可:MIT
 
 ## 目录
@@ -113,7 +113,7 @@ pnpm --filter @readly/worker run deploy
 ## 本地开发与测试
 
 ```bash
-pnpm build && pnpm -r test     # worker 180 + web 279 = 459 项
+pnpm build && pnpm -r test     # worker 181 + web 279 = 460 项
 pnpm -r typecheck
 ```
 

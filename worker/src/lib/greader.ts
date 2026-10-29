@@ -65,13 +65,14 @@ export function parseItemId(raw: string): number | null {
     const id = Number.parseInt(hex, 16);
     return Number.isSafeInteger(id) && id > 0 ? id : null;
   }
-  // 全数字优先按十进制解释(客户端常回传 16 位十进制 ID)
-  if (/^\d+$/.test(value)) {
-    const id = Number(value);
+  // 16 字符无前缀:以 0 开头几乎只能是左补零的 hex(如 Reeder 回传
+  // 0000000000000010);真正 16 位十进制 ID(如 1746307865812560)无前导 0。
+  if (/^[0-9a-fA-F]{16}$/.test(value)) {
+    const id = value.startsWith("0") ? Number.parseInt(value, 16) : /^\d+$/.test(value) ? Number(value) : Number.parseInt(value, 16);
     return Number.isSafeInteger(id) && id > 0 ? id : null;
   }
-  if (/^[0-9a-fA-F]{16}$/.test(value)) {
-    const id = Number.parseInt(value, 16);
+  if (/^\d+$/.test(value)) {
+    const id = Number(value);
     return Number.isSafeInteger(id) && id > 0 ? id : null;
   }
   return null;

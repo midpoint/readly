@@ -228,13 +228,18 @@ interface StreamFilter {
 
 function parseStream(raw: string): StreamFilter {
   const stream = raw.trim();
-  if (stream === READING_LIST || stream === READ_TAG || stream === KEPT_UNREAD) return {};
-  if (stream === STARRED_TAG) return { starred: true };
+  const state = /^user\/[^/]+\/state\/com\.google\/(.+)$/.exec(stream);
+  if (state) {
+    if (state[1] === "reading-list" || state[1] === "read" || state[1] === "kept-unread") return {};
+    if (state[1] === "starred") return { starred: true };
+    return { empty: true };
+  }
+  const label = /^user\/[^/]+\/label\/(.+)$/.exec(stream);
+  if (label) return { categoryName: label[1] };
   if (stream.startsWith("feed/")) {
     const id = Number(stream.slice("feed/".length));
     return Number.isInteger(id) && id > 0 ? { feedId: id } : { empty: true };
   }
-  if (stream.startsWith(LABEL_PREFIX)) return { categoryName: stream.slice(LABEL_PREFIX.length) };
   return { empty: true };
 }
 
