@@ -231,3 +231,156 @@ describe("订阅列表、标签与未读计数", () => {
     ]);
   });
 });
+
+async function seedManyArticles(count = 120): Promise<{ feedId: number; ids: number[] }> {
+  const feed = await env.DB.prepare(
+    "INSERT INTO feeds (url, title) VALUES ('https://many.example.com/rss', '批量源')"
+  ).run();
+  const feedId = Number(feed.meta.last_row_id);
+  const statements: D1PreparedStatement[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const publishedAt = new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString();
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO articles (feed_id, guid, title, url, author, published_at, excerpt, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(
+        feedId,
+        `g${i}`,
+        `文章${i}`,
+        `https://many.example.com/${i}`,
+        i === 0 ? null : `作者${i}`,
+        publishedAt,
+        `摘要${i}`,
+        `<p>正文${i}</p>`
+      )
+    );
+  }
+  const results: D1Result<unknown>[] = [];
+  for (let start = 0; start < statements.length; start += 50) {
+    results.push(...(await env.DB.batch(statements.slice(start, start + 50))));
+  }
+  return { feedId, ids: results.map((result) => Number(result.meta.last_row_id)) };
+}
+
+describe("文章流", () => {
+  it("items/ids:默认最新优先、r=o 升序、n 上限、continuation 往返", async () => {
+    await enable();
+    const { feedId, ids } = await seedManyArticles();
+    const page1 = (await (
+      await authed(`/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&n=10`)
+    ).json()) as { itemRefs: { id: string }[]; continuation?: string };
+    expect(page1.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(-10).reverse());
+    expect(page1.continuation).toBeTruthy();
+
+    const page2 = (await (
+      await authed(
+        `/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&n=10&c=${encodeURIComponent(page1.continuation!)}`
+      )
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(page2.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(-20, -10).reverse());
+
+    const oldest = (await (
+      await authed(`/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&n=5&r=o`)
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(oldest.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(0, 5));
+
+    const feedStream = (await (
+      await authed(`/reader/api/0/stream/items/ids?s=feed/${feedId}&n=3`)
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(feedStream.itemRefs).toHaveLength(3);
+  });
+
+  it("items/ids:xt/it/ot/nt 过滤与未知流", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(5);
+    await env.DB.prepare("INSERT INTO article_states (article_id, is_read, is_starred) VALUES (?, 1, 1)").bind(ids[0]).run();
+    await env.DB.prepare("INSERT INTO article_states (article_id, is_read, is_starred) VALUES (?, 0, 1)").bind(ids[1]).run();
+
+    const unread = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&xt=user/-/state/com.google/read&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(unread.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(1));
+
+    const starred = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/starred&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(starred.itemRefs.map((ref) => Number(ref.id))).toEqual([ids[0], ids[1]]);
+
+    const readOnly = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&it=user/-/state/com.google/read&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(readOnly.itemRefs.map((ref) => Number(ref.id))).toEqual([ids[0]]);
+
+    const olderThan = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&ot=1767225603&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(olderThan.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(0, 3));
+
+    const newerThan = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&nt=1767225603&r=o")
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(newerThan.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(4));
+
+    const unknown = (await (
+      await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/broadcast")
+    ).json()) as { itemRefs: unknown[] };
+    expect(unknown.itemRefs).toEqual([]);
+  });
+
+  it("stream/contents 路径流、item 形状与分页", async () => {
+    await enable();
+    const { feedId, ids } = await seedManyArticles(3);
+    await env.DB.prepare("UPDATE articles SET content_full = '<p>全文0</p>' WHERE id = ?").bind(ids[0]).run();
+    await env.DB.prepare("UPDATE articles SET content = NULL WHERE id = ?").bind(ids[1]).run();
+
+    const body = (await (
+      await authed("/reader/api/0/stream/contents/feed/" + feedId + "?r=o")
+    ).json()) as { id: string; updated: number; items: Record<string, unknown>[] };
+    expect(body.id).toBe(`feed/${feedId}`);
+    expect(typeof body.updated).toBe("number");
+    expect(body.items).toHaveLength(3);
+    expect(body.items[0]).toMatchObject({
+      id: "tag:google.com,2005:reader/item/" + ids[0]!.toString(16).padStart(16, "0"),
+      title: "文章0",
+      author: "",
+      published: 1767225600,
+      updated: 1767225600,
+      crawlTimeMsec: "1767225600000",
+      timestampUsec: "1767225600000000",
+      alternate: [{ href: "https://many.example.com/0", type: "text/html" }],
+      canonical: [{ href: "https://many.example.com/0" }],
+      summary: { direction: "ltr", content: "摘要0" },
+      content: { direction: "ltr", content: "<p>全文0</p>" },
+      categories: ["user/-/state/com.google/reading-list"],
+      origin: { streamId: `feed/${feedId}`, title: "批量源", htmlUrl: "" },
+    });
+    expect((body.items[1]!.content as { content: string }).content).toBe("摘要1");
+
+    const page1 = (await (
+      await authed(`/reader/api/0/stream/contents/user/-/state/com.google/reading-list?n=2`)
+    ).json()) as { items: Record<string, unknown>[]; continuation?: string };
+    expect(page1.items).toHaveLength(2);
+    expect(page1.continuation).toBeTruthy();
+    const page2 = (await (
+      await authed(
+        `/reader/api/0/stream/contents/user/-/state/com.google/reading-list?n=2&c=${encodeURIComponent(page1.continuation!)}`
+      )
+    ).json()) as { items: Record<string, unknown>[] };
+    expect(page2.items).toHaveLength(1);
+  });
+
+  it("stream/items/contents 支持长格式与十进制、保持顺序", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(3);
+    const long = `tag:google.com,2005:reader/item/${ids[2]!.toString(16).padStart(16, "0")}`;
+    const body = new URLSearchParams();
+    body.append("i", long);
+    body.append("i", String(ids[1]));
+    body.append("i", String(ids[0]));
+    body.append("i", "999999");
+    const res = await authed("/reader/api/0/stream/items/contents", { method: "POST", body });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as { items: { id: string; title: string }[] };
+    expect(payload.items.map((item) => item.title)).toEqual(["文章2", "文章1", "文章0"]);
+  });
+});
