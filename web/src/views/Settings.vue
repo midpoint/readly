@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { AiProvider } from "@readly/shared";
+import GoogleReaderSettings from "@/components/GoogleReaderSettings.vue";
 import ProviderEditor from "@/components/ProviderEditor.vue";
 import ShortcutHelp from "@/components/ShortcutHelp.vue";
 import { useShortcutHelp } from "@/composables/useShortcutHelp";
@@ -197,6 +198,8 @@ function doExport(): void {
         <li v-for="f in failures" :key="f.url">{{ f.url }}:{{ f.error }}</li>
       </ul>
     </section>
+
+    <GoogleReaderSettings />
 
     <section class="mt-8">
       <h2 class="text-base font-semibold">帮助</h2>

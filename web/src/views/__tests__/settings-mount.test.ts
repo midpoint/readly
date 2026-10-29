@@ -351,4 +351,9 @@ describe("Settings 挂载", () => {
     await flush();
     expect(container.textContent).toContain("订阅列表加载失败,导出可能不完整");
   });
+
+  it("Google Reader 区块挂载:未启用时显示启用入口", async () => {
+    const { container } = await mountSettings();
+    expect(container.querySelector("[data-greader-enable]")).toBeTruthy();
+  });
 });
