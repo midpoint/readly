@@ -1,157 +1,155 @@
 # Readly
 
-自托管 RSS 阅读器:订阅管理、全文抓取、本地事件聚类与关键词监控、AI 摘要。部署于 Cloudflare Workers + D1。
+自托管 RSS 阅读器。订阅管理、全文抓取、事件聚类、关键词监控、AI 摘要,以及 Google Reader API 第三方客户端同步,运行在一个 Cloudflare Worker + D1 上。
 
-- 前端:Vue 3 + Pinia + Tailwind CSS(PWA,可安装、应用壳离线可用)
-- 后端:Cloudflare Worker + D1(单 Worker 部署,含静态资源);无第三方运行时服务
-- 测试:458 项(worker 179 + web 279),全绿
+- 前端:Vue 3 + Pinia + Tailwind CSS v4(PWA)
+- 后端:Cloudflare Worker + D1(单 Worker 部署,含静态资源)
+- 运行时:除可选的 AI 服务商外,无第三方运行时服务
+- 测试:459 项(worker 180 + web 279)
+- 许可:MIT
 
-## 功能
+## 目录
 
-1. RSS/Atom 订阅:OPML 导入导出、批量加源、站点自动发现、分类管理;**源地址可随时修改**(保存即抓取校验,失败保持原地址不受影响);**自动识别源编码**(GBK/GB2312/Big5/UTF-16 等,中文标题不再乱码)
-2. 阅读体验:亮/暗/跟随系统 + 12 色调色板与自定义强调色、5 套阅读主题(经典/护眼米黄/羊皮纸/夜间/高对比);**中文文章默认「书籍式排版」**(首行缩进两格、两端对齐、标点挤压,仅对中文生效,西文保持 Web 常规排版),字号/行距/宽度/字体可调;三栏分隔线拖拽调宽(双击复位)、卡片/列表两种列表布局,偏好本地即时生效并同步云端
-3. 全文抓取:摘要过短时自动抓取原文(浏览器端 Readability 提取,服务端仅做代理)
-4. 阅读管理:未读/收藏/稍后读、按日期分组;列表与侧栏未读数实时同步
-5. 事件聚类:自动把内容相近的新闻归成事件组(本地计算,不联网),可调范围与相似度
-6. 关键词监控:本地规则匹配(普通词/正则、大小写、颜色),文章列表打点、正文高亮,每条规则可查看命中文章
-7. AI 摘要:自选 OpenAI 兼容服务商(国内模型可直连),流式生成要点摘要;密钥默认只存本机
-8. 一键部署 Cloudflare
-9. Google Reader API:兼容 Reeder、FeedMe、NewsFlash 等第三方客户端(设置页一键启用独立密码,已读与收藏双向同步)
+- [快速开始](#快速开始)
+- [功能](#功能)
+- [架构](#架构)
+- [第三方客户端](#第三方客户端)
+- [部署到 Cloudflare](#部署到-cloudflare)
+- [本地开发与测试](#本地开发与测试)
+- [文档](#文档)
+- [安全与限制](#安全与限制)
+- [常见问题](#常见问题)
+- [License](#license)
 
-### AI 网络路径与密钥说明
+## 快速开始
 
-- **直连模式**:浏览器直接请求你在设置中填写的 baseUrl,不经过服务端;本地/局域网服务(如 Ollama、LM Studio)可用此模式。
-- **代理模式**:请求经 Worker 转发,并**拒绝内网地址**(SSRF 防护),适合公网服务商;两种模式都带 120 秒超时。
-- 开启「密钥云同步」后,新设备会采用云端(D1)中的服务商配置;关闭时(默认)密钥只存本机浏览器。
+### 本地运行
 
-## 项目结构
-
-```
-shared/   TypeScript 类型与常量(前后端共用)
-worker/   Cloudflare Worker:API 路由、抓取/解析、D1 迁移(src/routes、src/lib、migrations)
-web/      Vue 3 SPA(PWA):视图、组件、Pinia stores、本地计算模块(聚类/关键词/提取)
-docs/superpowers/  设计文档与分阶段实施计划(开发过程留档,含评审结论)
-```
-
-## 本地开发
-
-```bash
-pnpm install
-pnpm build                                # 先构建 web(worker 的 assets/测试都需要 web/dist)
-pnpm --filter @readly/worker run d1:migrate:local
-pnpm dev          # 前端 5173 + worker 8787
-```
-
-未配置 `AUTH_TOKEN` 时本地不校验令牌。可复制 `worker/.dev.vars.example` 为 `worker/.dev.vars` 以在本地启用令牌校验。
-
-提示:`GET /__scheduled` 会被 SPA 静态资源回退吞掉(返回 index.html);本地触发定时任务请用:
-
-```bash
-curl -X POST "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"
-```
-
-注意:`pnpm dev` 未带 `--test-scheduled`,此时该端点仍返回 `200 ok` 但**不会真正执行**;需先以 `pnpm --filter @readly/worker exec wrangler dev --test-scheduled` 启动。执行结果见 worker 日志中的 `[readly] scheduled refresh:` 行。
-
-## PWA
-
-生产构建产出可安装 PWA(manifest + Service Worker,应用壳离线可用):
-
-```bash
-pnpm --filter @readly/web icons        # 重新生成图标(改 logo.svg 后)
-pnpm --filter @readly/web verify:pwa   # 校验构建产物中的 manifest/SW/图标
-```
-
-## 第三方客户端(Google Reader API)
-
-设置 → 第三方客户端(Google Reader API) → 启用,即可获得:
-
-- 服务器地址:`https://<你的 Worker 域名>`
-- 邮箱:`readly`
-- 密码:设置页生成的独立密码(可随时重置/停用)
-
-在 Reeder、FeedMe、NewsFlash 等客户端中选择「Google Reader」账户类型并填入以上三项。已读与收藏(客户端中的 Starred/Saved)双向同步;Readly 的分类会作为 label 显示。
-
-限制:不支持在客户端内添加/删除订阅(加源、删源、改名、移分类请用网页端);仅 JSON;不支持 Broadcast 等扩展;客户端不能触发刷新(新文章由服务端 cron 抓取)。密码以明文存于 D1 以便再次展示,泄露后请在设置页重置。
-
-## 部署到 Cloudflare
+要求 Node.js 22+、pnpm 10。
 
 ```bash
 pnpm install
 pnpm build
-
-cd worker
-npx wrangler d1 create readly          # 记下 database_id 写入 wrangler.toml
-npx wrangler d1 migrations apply readly --remote
-npx wrangler secret put AUTH_TOKEN     # 设置你的访问令牌(必做)
-npx wrangler deploy
+pnpm --filter @readly/worker run d1:migrate:local
+pnpm dev
 ```
 
-部署后在浏览器打开 Worker 域名,输入 AUTH_TOKEN 即可使用。
+打开 <http://localhost:5173>。`pnpm dev` 会同时启动 Vite(5173)和 Worker(8787),前端 API 请求由 Vite 代理到 Worker。首次运行必须先构建 `web/dist`;worker 的静态资源与测试都依赖它。
 
-浏览器要求:需较新的现代浏览器(Chrome 116+ / Safari 17.4+ / Firefox 124+)。更旧的浏览器上,AI 请求的超时信号合并会回退为内置兼容实现(直连与代理两种模式均适用),无功能损失。
+未设置 `AUTH_TOKEN` 时本地不校验令牌。需要令牌校验时,复制 `worker/.dev.vars.example` 为 `worker/.dev.vars` 并修改。更多说明见[开发指南](docs/development.md)。
 
-### 免费额度说明
+## 功能
 
-- Workers 免费版单次调用 CPU 约 10ms:刷新按 `refresh_batch_size`(默认 2)分批,cron 每分钟推进一批,客户端「刷新全部」会循环调用直至完成;订阅源较多(>50)时建议升级 Workers Paid。
-- D1 免费版 5GB/每日 500 万行读,个人使用充裕。
+| 模块 | 能力 |
+|---|---|
+| 订阅管理 | RSS/Atom、OPML 导入导出、批量加源、站点自动发现、分类管理;源地址可随时修改(保存即抓取校验);自动识别 GBK/GB2312/Big5/UTF-16 等编码 |
+| 阅读体验 | 亮/暗/跟随系统、12 色强调色与自定义颜色、5 套阅读主题;中文文章默认书籍式排版(首行缩进、两端对齐、标点挤压),字号/行距/宽度/字体可调;三栏分隔线拖拽、卡片/列表布局 |
+| 阅读管理 | 未读/收藏/稍后读、日期分组、未读数实时同步、按 3 天/1 周/1 月/1 年批量标已读 |
+| 全文抓取 | 摘要过短时自动抓取原文,也可手动抓取;浏览器端 Readability 提取,Worker 仅做代理 |
+| 事件聚类 | 本地把内容相近的新闻归为事件组,范围与相似度可调;IndexedDB 保留 1000 篇镜像 |
+| 关键词监控 | 普通词/正则、大小写、颜色规则;列表打点、正文高亮,可查看每条规则的命中文章 |
+| AI 摘要 | OpenAI 兼容服务商,流式生成要点摘要;支持直连与 Worker 代理;密钥默认只存本机 |
+| PWA | 可安装、应用壳离线可用;提供图标生成与构建产物校验脚本 |
+| 第三方客户端 | Google Reader API 核心同步:订阅、标签、未读计数、文章流、已读/收藏写操作 |
 
-## 自动部署(Cloudflare Workers Builds)
+### AI 网络路径与密钥
 
-在 Cloudflare 后台把 Worker 连到本仓库后,push 到 `main` 即自动完成:安装依赖 → 构建 → D1 远端迁移 → `wrangler deploy`。构建在 Cloudflare 侧执行,**无需配置任何 API Token**(Workers Builds 会自动生成账户级 Token)。
+- **直连模式**:浏览器直接请求你填写的 `baseUrl`,适合 Ollama、LM Studio 等本地/局域网服务。
+- **代理模式**:请求经 Worker 转发,拒绝内网地址(SSRF 防护),适合公网服务商;两种模式都有 120 秒超时。
+- 默认密钥只存本机浏览器;开启「密钥云同步」后,服务商配置(含密钥)会写入 D1,便于新设备恢复。关闭时 D1 副本不含密钥。
 
-接入步骤:
+## 架构
 
-1. **创建 Worker 并绑定仓库**:Cloudflare 后台 → Workers & Pages → *Create application* → *Import a repository*,授权 GitHub 并选择本仓库(若已有同名 Worker 则在其 **Settings → Builds → Connect**);项目名填 `readly`。
-2. **按下表配置**(monorepo 关键项):
+```text
+浏览器 SPA ── /api/* ──────────────> Worker(令牌鉴权)──> D1
+     │                                ├─ /accounts、/reader/* ──> Google Reader API
+     │                                └─ /api/ai/chat(代理模式)──> AI 服务商
+     └─ AI 直连(可选)────────────────────────────────────────> AI 服务商
+Worker cron(每分钟)──> 抓取到期订阅 ──> 解析/去重 ──> D1
+```
 
-   | 配置项 | 值 |
-   |---|---|
-   | Git branch | `main` |
-   | Root directory | `/`(整仓:web 构建 + 根 lockfile) |
-   | Build variable | `SKIP_DEPENDENCY_INSTALL` = `1` |
-   | Build command | `pnpm install --frozen-lockfile && pnpm build` |
-   | Deploy command | `pnpm --filter @readly/worker run d1:migrate:remote && pnpm --filter @readly/worker run deploy` |
+- 单 Worker 同时托管 SPA 静态资源、REST API 与 Google Reader API;状态集中在 D1。
+- 聚类、关键词匹配、正文提取在浏览器端完成,以适配 Workers 免费版约 10ms 的单次 CPU 限制。
+- PWA 缓存应用壳;最近 1000 篇文章镜像存入 IndexedDB,用于事件聚类与关键词匹配;文章浏览仍需网络。
+- 详细组件、数据流与设计取舍见[架构说明](docs/architecture.md)。
 
-3. **一次性准备**:
+## 第三方客户端
 
-   - 创建 D1 并把 ID 写入配置:
+兼容 Google Reader API 的客户端(Reeder、FeedMe、NewsFlash 等)可以接入 Readly。在 **设置 → 第三方客户端(Google Reader API)** 启用后获得:
 
-     ```bash
-     pnpm --filter @readly/worker exec wrangler d1 create readly
-     # 把返回的 database_id 填入 worker/wrangler.toml,提交并推送
-     ```
+- 服务器地址:`https://<你的 Worker 域名>`(自定义域名同理)
+- 邮箱:`readly`
+- 密码:设置页生成的 32 位十六进制独立密码;可随时重置或停用
 
-   - 设置访问令牌 `AUTH_TOKEN`(**必做**;未设置时任何人都能访问你的实例——Worker 不校验令牌)。密钥加密存储、跨部署保留,二选一:
+在客户端选择「Google Reader」账户类型并填入以上三项。已读与收藏(Starred)双向同步,Readly 的分类会显示为 label。
 
-     - **Cloudflare 面板(推荐,入口经官方文档核实)**:Workers & Pages → `readly` → **Settings → Variables and Secrets** → **Add** → 类型选 **Secret(加密)** → 名称填 `AUTH_TOKEN` → 填入你的访问口令 → **Deploy**。
+支持范围是**核心同步**:不支持在客户端内添加/删除/改名/移动订阅,不能触发刷新(新文章由服务端 cron 抓取),仅 JSON 输出(无 XML),不支持 Broadcast 等扩展。密码为便于再次展示以明文存于 D1,泄露后请在设置页重置。
 
-     - **命令行**(等价,本地执行一次即可):
+完整端点、兼容性与排错见 [Google Reader API 文档](docs/google-reader-api.md)。
 
-       ```bash
-       pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
-       ```
+## 部署到 Cloudflare
 
-完成后,每次 push 到 `main` 自动部署。免费额度:3,000 构建分钟/月(本项目构建约 1-2 分钟)。
-
-> 备注:若首跑时「D1 迁移」步骤报权限错(自动 Token 的迁移权限未在文档中明示),把迁移从 Deploy command 中移除即可(部署不受影响),迁移改为在本地执行 `pnpm --filter @readly/worker run d1:migrate:remote`。
-
-### 手动备用部署(GitHub Actions)
-
-`.github/workflows/deploy.yml` 保留为**仅手动触发**的备用通道(Actions 页 → Deploy to Cloudflare (manual fallback) → Run workflow;`worker/wrangler.toml` 的 `database_id` 仍为占位符时会友好跳过)。使用它需在仓库 Settings → Secrets and variables → Actions 配置两个 Secrets:
-
-- `CLOUDFLARE_API_TOKEN`:Cloudflare 后台 API Tokens,选 “Edit Cloudflare Workers” 模板并追加 **D1 → Edit** 权限
-- `CLOUDFLARE_ACCOUNT_ID`:Cloudflare 后台右侧栏的 Account ID
-
-## 测试
+最短路径(在仓库根执行,需已登录 Wrangler 或配置 Cloudflare API Token):
 
 ```bash
-pnpm build && pnpm -r test     # worker 179 + web 279 = 458 项
+pnpm install
+pnpm build
+pnpm --filter @readly/worker exec wrangler d1 create readly
+# 把返回的 database_id 写入 worker/wrangler.toml
+pnpm --filter @readly/worker run d1:migrate:remote
+pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
+pnpm --filter @readly/worker run deploy
+```
+
+> **安全提示**:`AUTH_TOKEN` 必须设置。未设置时 Worker 不校验任何请求,实例对公网完全开放。
+
+生产环境还可以:
+
+- **Cloudflare Workers Builds(推荐)**:仓库连到 Worker 后,push 到 `main` 自动安装、构建、迁移并部署,无需额外 API Token。
+- **GitHub Actions 手动备用**:`.github/workflows/deploy.yml`,需要两个仓库 Secrets,适合手动兜底。
+
+配置项、D1 权限、`AUTH_TOKEN` 面板设置、免费额度与常见故障见[部署指南](docs/deployment.md)。
+
+## 本地开发与测试
+
+```bash
+pnpm build && pnpm -r test     # worker 180 + web 279 = 459 项
 pnpm -r typecheck
 ```
 
-## 设计文档
+worker 测试依赖 `web/dist`,所以先执行 `pnpm build`。定时任务、单测过滤、PWA 脚本、故障排查等见[开发指南](docs/development.md)。
 
-`docs/superpowers/specs/` 为已评审的设计文档,`docs/superpowers/plans/` 为分阶段实施计划(含每个功能的验收记录)。
+## 文档
+
+完整索引见 [docs/README.md](docs/README.md);常用文档:
+
+| 文档 | 内容 |
+|---|---|
+| [开发指南](docs/development.md) | 环境、脚本、测试、定时任务、排错 |
+| [部署指南](docs/deployment.md) | 手动部署、Workers Builds、Actions 备用、备份与额度 |
+| [Google Reader API](docs/google-reader-api.md) | 客户端配置、端点、同步范围、限制与排错 |
+| [架构说明](docs/architecture.md) | 组件、数据流、关键设计与安全边界 |
+| [常见问题](docs/faq.md) | 令牌、多用户、备份、AI 密钥等 |
+| [设计档案](docs/superpowers/README.md) | 全部设计文档与实施计划索引 |
+
+## 安全与限制
+
+- **单用户设计**:一个实例对应一个阅读库。多用户请部署多个实例。
+- **访问令牌**:`AUTH_TOKEN` 保护 `/api/*`;未设置时所有请求放行。修改令牌后,已登录的网页需要重新输入。
+- **Google Reader 密码**:为了在设置页再次展示,密码以明文存入 D1;重置密码会立即使旧客户端失效。
+- **AI 密钥**:默认只存浏览器;开启云同步后才会写入 D1。使用代理模式时密钥会随请求经过 Worker。
+- **数据**:订阅、文章、状态和设置都在 D1;浏览器另存访问令牌、偏好设置和(默认的)AI 密钥。请自行备份 D1。
+- **客户端范围**:Google Reader 仅核心同步,不提供客户端侧订阅管理/刷新;详见 GReader 文档。
+
+## 常见问题
+
+- **忘记 `AUTH_TOKEN` 怎么办?** 令牌无法从 Worker 读回;用 `wrangler secret put AUTH_TOKEN` 设置新值,然后在所有设备重新登录。
+- **支持多用户吗?** 不支持。每个用户/阅读库部署一个实例。
+- **怎么备份?** 网页端导出 OPML 可备份订阅;完整数据用 `wrangler d1 export` 导出 D1(含状态、设置和 GReader 密码,妥善保管)。详见[部署指南](docs/deployment.md#备份与恢复)。
+- **为什么客户端不能加源或刷新?** GReader 范围限定为核心同步;订阅管理和刷新由网页端/服务端 cron 负责。
+- **AI 密钥存在哪里?** 默认只在本机 localStorage;开启「密钥云同步」后写入 D1。直连模式不经过 Worker,代理模式经 Worker 转发。
+
+更多问题见[常见问题](docs/faq.md)。
 
 ## License
 
