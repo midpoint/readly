@@ -4,7 +4,7 @@
 
 - 前端:Vue 3 + Pinia + Tailwind CSS(PWA,可安装、应用壳离线可用)
 - 后端:Cloudflare Worker + D1(单 Worker 部署,含静态资源);无第三方运行时服务
-- 测试:409 项(worker 143 + web 266),全绿
+- 测试:458 项(worker 179 + web 279),全绿
 
 ## 功能
 
@@ -16,6 +16,7 @@
 6. 关键词监控:本地规则匹配(普通词/正则、大小写、颜色),文章列表打点、正文高亮,每条规则可查看命中文章
 7. AI 摘要:自选 OpenAI 兼容服务商(国内模型可直连),流式生成要点摘要;密钥默认只存本机
 8. 一键部署 Cloudflare
+9. Google Reader API:兼容 Reeder、FeedMe、NewsFlash 等第三方客户端(设置页一键启用独立密码,已读与收藏双向同步)
 
 ### AI 网络路径与密钥说明
 
@@ -59,6 +60,18 @@ curl -X POST "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*"
 pnpm --filter @readly/web icons        # 重新生成图标(改 logo.svg 后)
 pnpm --filter @readly/web verify:pwa   # 校验构建产物中的 manifest/SW/图标
 ```
+
+## 第三方客户端(Google Reader API)
+
+设置 → 第三方客户端(Google Reader API) → 启用,即可获得:
+
+- 服务器地址:`https://<你的 Worker 域名>`
+- 邮箱:`readly`
+- 密码:设置页生成的独立密码(可随时重置/停用)
+
+在 Reeder、FeedMe、NewsFlash 等客户端中选择「Google Reader」账户类型并填入以上三项。已读与收藏(客户端中的 Starred/Saved)双向同步;Readly 的分类会作为 label 显示。
+
+限制:不支持在客户端内添加/删除订阅(加源、删源、改名、移分类请用网页端);仅 JSON;不支持 Broadcast 等扩展;客户端不能触发刷新(新文章由服务端 cron 抓取)。密码以明文存于 D1 以便再次展示,泄露后请在设置页重置。
 
 ## 部署到 Cloudflare
 
@@ -132,7 +145,7 @@ npx wrangler deploy
 ## 测试
 
 ```bash
-pnpm build && pnpm -r test     # worker 143 + web 266 = 409 项
+pnpm build && pnpm -r test     # worker 179 + web 279 = 458 项
 pnpm -r typecheck
 ```
 
