@@ -173,6 +173,13 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   articleLayout: "card",
 };
 
+export interface GReaderAuth {
+  username: string;
+  password: string;
+}
+
+export const GREADER_USERNAME = "readly";
+
 export const SETTING_KEYS = {
   readerPrefs: "reader_prefs",
   aiProviders: "ai_providers",
@@ -182,4 +189,5 @@ export const SETTING_KEYS = {
   refreshBatchSize: "refresh_batch_size",
   refreshInterval: "refresh_interval",
   retentionDays: "retention_days",
+  greaderAuth: "greader_auth",
 } as const;
