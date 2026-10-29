@@ -145,8 +145,8 @@
 |---|---|
 | `s` | 流 ID(必需);缺失返回 `{"itemRefs":[]}` |
 | `n` | 条数,默认 20,上限 1000;非法取默认 |
-| `ot` | 只返回 `published_at < ot`(Unix 秒) |
-| `nt` | 只返回 `published_at > nt`(Unix 秒) |
+| `ot` | 只返回 `published_at >= ot`(时间下界;接受 Unix 秒/毫秒/微秒) |
+| `nt` | 只返回 `published_at <= nt`(时间上界;接受 Unix 秒/毫秒/微秒) |
 | `xt` | 排除标签,可重复;支持 `.../read`、`.../starred` |
 | `it` | 包含标签,可重复;支持 `.../read`、`.../starred` |
 | `r` | `r=o` 为发布时间升序,否则降序 |
@@ -159,6 +159,7 @@
 ```
 
 - `itemRefs[].id` 为十进制字符串;有更多结果才带 `continuation`。
+- `ot` 是「最早时间」(下界),`nt` 是「最晚时间」(上界),边界均包含;这是原始 Google Reader 的语义。时间参数按量级识别秒/毫秒/微秒,兼容客户端回传 `timestampUsec`。
 - 排序:`published_at DESC, id DESC`(或 `r=o` 时升序)。
 - `xt=read` 排除已读;`xt=starred` 排除收藏;`it=read` 仅已读;`it=starred` 仅收藏;两者可组合(先包含后排除的常规语义:同时提供时以 `it` 为包含集合、`xt` 为排除集合,SQL 中 `it` 条件 AND `xt` 条件)。多值之间为 AND。
 - 游标编码:JSON `{"p": "<published_at>", "id": <id>}` → `btoa` → URL-safe(`+`→`-`,`/`→`_`,去 `=`);解码失败视为无游标。
@@ -226,7 +227,7 @@
 
 ### 4.10 `POST /reader/api/0/mark-all-as-read`
 
-- 表单参数:`s`(流 ID)、`ts`(Unix 秒;`>10^10` 按毫秒除以 1000;非法/缺失取当前时间)、`T`(忽略)。
+- 表单参数:`s`(流 ID)、`ts`(截止时间,接受 Unix 秒/毫秒/微秒;非法/缺失取当前时间)、`T`(忽略)。
 - 标记该流内 `published_at < ts` 的未读文章为已读(`read_at = now`),复用 `mark-all-read` 的 `INSERT ... SELECT ... ON CONFLICT` 模式。
 - 流映射:
   - reading-list / read / kept-unread → 全部;

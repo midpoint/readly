@@ -107,6 +107,26 @@ export function isoFromUnix(seconds: number): string | null {
   return new Date(seconds * 1000).toISOString();
 }
 
+/**
+ * 解析 GReader 的 ot/nt/ts 时间参数。客户端可能传秒、毫秒或微秒
+ * (Inoreader 等实现接受微秒;部分客户端直接回传 timestampUsec)。
+ * 返回 ISO 字符串;缺失、非法或超出范围返回 null。
+ */
+export function isoFromTimestampParam(raw: string | undefined): string | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const ms =
+    value > 1e14
+      ? Math.floor(value / 1000) // 微秒
+      : value > 1e11
+        ? Math.floor(value) // 毫秒
+        : Math.floor(value) * 1000; // 秒
+  if (ms > 253402300799000) return null;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 export function parseIntParam(raw: string | undefined, fallback: number, min: number, max: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const value = Number(raw);

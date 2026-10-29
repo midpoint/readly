@@ -12,7 +12,7 @@ import {
   deriveToken,
   encodeCursor,
   googleLoginToken,
-  isoFromUnix,
+  isoFromTimestampParam,
   loadCredentials,
   parseItemId,
   parseIntParam,
@@ -278,16 +278,14 @@ function buildStreamWhere(
   if (params.getAll("it").includes(STARRED_TAG)) where.push("COALESCE(s.is_starred, 0) = 1");
   if (params.getAll("xt").includes(READ_TAG)) where.push("COALESCE(s.is_read, 0) = 0");
   if (params.getAll("xt").includes(STARRED_TAG)) where.push("COALESCE(s.is_starred, 0) = 0");
-  const ot = parseIntParam(params.get("ot"), 0, 0, 253402300799);
-  const otIso = ot > 0 ? isoFromUnix(ot) : null;
+  const otIso = isoFromTimestampParam(params.get("ot"));
   if (otIso) {
-    where.push("a.published_at < ?");
+    where.push("a.published_at >= ?");
     binds.push(otIso);
   }
-  const nt = parseIntParam(params.get("nt"), 0, 0, 253402300799);
-  const ntIso = nt > 0 ? isoFromUnix(nt) : null;
+  const ntIso = isoFromTimestampParam(params.get("nt"));
   if (ntIso) {
-    where.push("a.published_at > ?");
+    where.push("a.published_at <= ?");
     binds.push(ntIso);
   }
   if (cursor) {
@@ -332,12 +330,12 @@ greader.get("/reader/api/0/stream/items/ids", async (c) => {
 greader.on(["GET", "POST"], "/reader/api/0/stream/contents/*", async (c) => {
   const params = await collectParams(c);
   const prefix = "/reader/api/0/stream/contents/";
-  const rawStream = c.req.path.startsWith(prefix) ? c.req.path.slice(prefix.length) : params.get("s") ?? "";
+  const rawStream = c.req.path.startsWith(prefix) ? c.req.path.slice(prefix.length) : "";
   let streamId: string;
   try {
-    streamId = decodeURIComponent(rawStream);
+    streamId = decodeURIComponent(rawStream || params.get("s") || "");
   } catch {
-    streamId = rawStream;
+    streamId = rawStream || params.get("s") || "";
   }
   const stream = parseStream(streamId);
   const limit = streamLimit(params);
@@ -478,17 +476,14 @@ greader.post("/reader/api/0/mark-all-as-read", async (c) => {
   const params = await collectParams(c);
   const stream = parseStream(params.get("s") ?? "");
   if (stream.empty) return c.text("OK", 200, NO_STORE);
-  const rawTs = Number(params.get("ts"));
-  let ts = Number.isFinite(rawTs) && rawTs > 0 ? rawTs : Date.now() / 1000;
-  if (ts > 1e10) ts /= 1000;
-  if (ts > 253402300799) ts = Date.now() / 1000;
-  const cutoff = new Date(ts * 1000).toISOString();
+  const now = new Date().toISOString();
+  const cutoff = isoFromTimestampParam(params.get("ts")) ?? now;
 
   const where: string[] = [
     "COALESCE((SELECT is_read FROM article_states WHERE article_id = a.id), 0) = 0",
     "a.published_at < ?",
   ];
-  const binds: (string | number)[] = [new Date().toISOString(), new Date().toISOString(), cutoff];
+  const binds: (string | number)[] = [now, now, cutoff];
   let join = "";
   if (stream.feedId !== undefined) {
     where.push("a.feed_id = ?");

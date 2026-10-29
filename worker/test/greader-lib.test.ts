@@ -6,6 +6,7 @@ import {
   decodeCursor,
   deriveToken,
   encodeCursor,
+  isoFromTimestampParam,
   isoFromUnix,
   longItemId,
   parseItemId,
@@ -71,6 +72,15 @@ describe("时间与数字参数", () => {
     expect(isoFromUnix(1790812801)).toBe("2026-10-01T00:00:01.000Z");
     expect(isoFromUnix(0)).toBeNull();
     expect(isoFromUnix(1e18)).toBeNull();
+  });
+  it("isoFromTimestampParam 接受秒、毫秒、微秒", () => {
+    expect(isoFromTimestampParam("1790812801")).toBe("2026-10-01T00:00:01.000Z");
+    expect(isoFromTimestampParam("1790812801123")).toBe("2026-10-01T00:00:01.123Z");
+    expect(isoFromTimestampParam("1790812801123456")).toBe("2026-10-01T00:00:01.123Z");
+    expect(isoFromTimestampParam(undefined)).toBeNull();
+    expect(isoFromTimestampParam("0")).toBeNull();
+    expect(isoFromTimestampParam("abc")).toBeNull();
+    expect(isoFromTimestampParam("1e18")).toBeNull();
   });
   it("parseIntParam 截断与钳制", () => {
     expect(parseIntParam(undefined, 20, 1, 1000)).toBe(20);

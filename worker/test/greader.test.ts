@@ -311,15 +311,29 @@ describe("文章流", () => {
     ).json()) as { itemRefs: { id: string }[] };
     expect(readOnly.itemRefs.map((ref) => Number(ref.id))).toEqual([ids[0]]);
 
-    const olderThan = (await (
+    const since = (await (
       await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&ot=1767225603&r=o")
     ).json()) as { itemRefs: { id: string }[] };
-    expect(olderThan.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(0, 3));
+    expect(since.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(3));
 
-    const newerThan = (await (
+    const until = (await (
       await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&nt=1767225603&r=o")
     ).json()) as { itemRefs: { id: string }[] };
-    expect(newerThan.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(4));
+    expect(until.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(0, 4));
+
+    const window = (await (
+      await authed(
+        "/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&ot=1767225602&nt=1767225603&r=o"
+      )
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(window.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(2, 4));
+
+    const usecWindow = (await (
+      await authed(
+        "/reader/api/0/stream/items/ids?s=user/-/state/com.google/reading-list&ot=1767225602000000&nt=1767225603000000&r=o"
+      )
+    ).json()) as { itemRefs: { id: string }[] };
+    expect(usecWindow.itemRefs.map((ref) => Number(ref.id))).toEqual(ids.slice(2, 4));
 
     const unknown = (await (
       await authed("/reader/api/0/stream/items/ids?s=user/-/state/com.google/broadcast")
@@ -367,6 +381,23 @@ describe("文章流", () => {
       )
     ).json()) as { items: Record<string, unknown>[] };
     expect(page2.items).toHaveLength(1);
+
+    const bounded = (await (
+      await authed(
+        "/reader/api/0/stream/contents/user/-/state/com.google/reading-list?ot=1767225601&nt=1767225602&r=o"
+      )
+    ).json()) as { items: Record<string, unknown>[] };
+    expect(bounded.items.map((item) => item.title)).toEqual(["文章1", "文章2"]);
+
+    const viaFormStream = new URLSearchParams({
+      s: "user/-/state/com.google/reading-list",
+      n: "2",
+      r: "o",
+    });
+    const viaForm = (await (
+      await authed("/reader/api/0/stream/contents/", { method: "POST", body: viaFormStream })
+    ).json()) as { items: Record<string, unknown>[] };
+    expect(viaForm.items.map((item) => item.title)).toEqual(["文章0", "文章1"]);
   });
 
   it("stream/items/contents 支持长格式与十进制、保持顺序", async () => {
@@ -522,17 +553,26 @@ describe("写操作", () => {
     expect(await invalidRes.text()).toBe("OK");
   });
 
-  it("mark-all-as-read 接受毫秒时间戳", async () => {
+  it("mark-all-as-read 接受毫秒与微秒时间戳", async () => {
     await enable();
     const feed = await env.DB.prepare(
       "INSERT INTO feeds (url, title) VALUES ('https://ms.example.com/rss', '毫秒源')"
     ).run();
-    const id = await insertArticle(Number(feed.meta.last_row_id), "m1", "2026-10-01T00:00:01.000Z");
+    const feedId = Number(feed.meta.last_row_id);
+    const id = await insertArticle(feedId, "m1", "2026-10-01T00:00:01.000Z");
     const body = new URLSearchParams({
-      s: `feed/${Number(feed.meta.last_row_id)}`,
+      s: `feed/${feedId}`,
       ts: String(Date.parse("2026-10-01T00:00:02.000Z")),
     });
     await authed("/reader/api/0/mark-all-as-read", { method: "POST", body });
     expect((await stateOf(id))?.is_read).toBe(1);
+
+    const usecId = await insertArticle(feedId, "m2", "2026-10-01T00:00:03.000Z");
+    const usecBody = new URLSearchParams({
+      s: `feed/${feedId}`,
+      ts: String(Date.parse("2026-10-01T00:00:04.000Z") * 1000),
+    });
+    await authed("/reader/api/0/mark-all-as-read", { method: "POST", body: usecBody });
+    expect((await stateOf(usecId))?.is_read).toBe(1);
   });
 });
