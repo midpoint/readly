@@ -105,9 +105,9 @@ item 形状:`{id, feed_id, title, author, html, url, is_saved, is_read, created_
 
 - 单条标记只改目标标记,保留其余标记(与现有 `PATCH /api/articles/:id` 语义一致);不存在的文章 id 忽略。
 - `id` 支持逗号分隔(去重、非正整数忽略、最多 50),以 `json_each(?)` 传数组,避免 D1 100 个绑定参数上限。
-- `before` 为 Unix 秒;`T > 10^10` 时按毫秒除以 1000,`T > 10^14` 时按微秒除以 10^6;缺失/非数字/≤0 时取当前时间。比较字段为 `published_at`(与下发的 `created_on_time` 一致),因此客户端时钟偏差可能导致临界条目被多标。
+- `before` 为 Unix 秒;毫秒级时间戳(`T > 10^10`)按 `/1000` 归一,微秒级(`T > 10^14`)按 `/10^6` 归一;缺失/非数字/≤0 时取当前时间。比较字段为 `published_at`(与下发的 `created_on_time` 一致),因此客户端时钟偏差可能导致临界条目被多标。
 - `as` 非上述值、`mark` 非 item/feed/group → 不落库,仅返回基线。
-- 单条置读写入 `read_at = 本次操作时间`(与 `mark-all-read` 一致);feed/group 批量置读同样写本次时间,且只更新原本未读的行。
+- 单条置读保留首次 `read_at`(`COALESCE`);feed/group 批量置读写入本次时间,且只更新原本未读的行,不覆盖已读行的 `read_at`/`updated_at`。
 - 置读/未读使用 `INSERT ... SELECT ... FROM articles WHERE id IN (...)` 避免给不存在的文章建状态行。
 
 ## 4. 路由与部署配置

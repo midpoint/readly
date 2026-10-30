@@ -79,7 +79,7 @@ cp worker/.dev.vars.example worker/.dev.vars
 pnpm build && pnpm -r test && pnpm -r typecheck
 ```
 
-当前基线:worker 213 + web 284 = **497** 项。worker 测试依赖 `web/dist`,所以不要跳过 `pnpm build`。
+当前基线:worker 219 + web 284 = **503** 项。worker 测试依赖 `web/dist`,所以不要跳过 `pnpm build`。
 
 只跑某个文件时:
 

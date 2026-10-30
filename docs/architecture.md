@@ -23,7 +23,7 @@ Worker 同时承担五类职责:
 1. **静态资源**:`web/dist` 通过 Workers Assets 托管;非白名单路径回退到 `index.html`,由 Vue Router 接管。
 2. **REST API**:`/api/*`,由 `AUTH_TOKEN` 保护;覆盖订阅、文章、状态、设置、AI 代理等。
 3. **Google Reader API**:`/accounts`、`/reader/*`,使用设置页生成的独立凭据;详见 [Google Reader API 文档](google-reader-api.md)。
-4. **Fever API**:`/fever`、`/fever/*`、`/fever.php`,使用另一组独立凭据;详见 [Fever API 文档](fever-api.md)。
+4. **Fever API**:`/fever`、`/fever/`、`/fever.php`,使用另一组独立凭据;详见 [Fever API 文档](fever-api.md)。
 5. **定时任务**:Cron Trigger 每分钟推进一批到期订阅的抓取。
 
 `worker/wrangler.toml` 的 `run_worker_first` 将 `/api/*`、`/accounts`、`/accounts/*`、`/reader`、`/reader/*`、`/fever`、`/fever/*`、`/fever.php` 排除在 SPA 回退之外,保证 API 不会被静态资源吞掉。

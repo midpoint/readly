@@ -16,7 +16,7 @@ Fever 密码与网页登录使用的 `AUTH_TOKEN`、Google Reader 密码相互�
 
 ## 认证
 
-Fever 的 `api_key` 是 `md5(username + ":" + password)` 的小写十六进制值。客户端通常把 `api_key` 放在 POST 表单中;Readly 也接受查询参数。
+Fever 的 `api_key` 是 `md5(username + ":" + password)` 的小写十六进制值。客户端通常把 `api_key` 放在 POST 表单中;Readly 也接受查询参数,但查询串可能进入代理或访问日志,优先使用 POST。
 
 ```bash
 BASE=https://你的域名

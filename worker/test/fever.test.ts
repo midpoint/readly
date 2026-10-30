@@ -195,6 +195,31 @@ describe("Fever 认证与路径", () => {
     expect((await json<BaseResponse>(query)).auth).toBe(1);
   });
 
+  it("表单体优先于查询串，JSON 体也生效，写响应 no-store", async () => {
+    await enable();
+    const bodyWins = await feverPost({ api_key: API_KEY }, "api&api_key=bad");
+    expect((await json<BaseResponse>(bodyWins)).auth).toBe(1);
+    const badBody = await feverPost({ api_key: "bad" }, `api&api_key=${API_KEY}`);
+    expect((await json<BaseResponse>(badBody)).auth).toBe(0);
+    const jsonRes = await SELF.fetch("http://example.com/fever/?api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: API_KEY }),
+    });
+    expect((await json<BaseResponse>(jsonRes)).auth).toBe(1);
+    const write = await feverPost({ api_key: API_KEY, mark: "group", as: "read", id: "0" });
+    expect(write.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("无订阅源时 last_refreshed_on_time 为 0", async () => {
+    await enable();
+    expect(await json<BaseResponse>(await feverPost({ api_key: API_KEY }))).toEqual({
+      api_version: 3,
+      auth: 1,
+      last_refreshed_on_time: 0,
+    });
+  });
+
   it("三条兼容路径、GET 与 POST 都可访问", async () => {
     await enable();
     for (const path of ["/fever", "/fever/", "/fever.php"]) {
@@ -316,6 +341,14 @@ describe("items", () => {
       await feverGet(`api&items&with_ids=${ids[4]},${ids[2]},${ids[2]},-1,x,${ids[3]}`)
     );
     expect(picked.items.map((item) => item.id)).toEqual([ids[2], ids[3], ids[4]]);
+  });
+
+  it("with_ids 最多返回 50 条", async () => {
+    await enable();
+    const { ids } = await seedManyArticles();
+    const body = await json<FeverItemsResponse>(await feverGet(`api&items&with_ids=${ids.slice(0, 60).join(",")}`));
+    expect(body.items).toHaveLength(50);
+    expect(body.items.map((item) => item.id)).toEqual(ids.slice(0, 50));
   });
 
   it("max_id 非法时回退；with_ids 全非法时为空但仍带 total_items", async () => {
@@ -502,6 +535,16 @@ describe("mark item", () => {
     expect((await stateOf(b))?.is_read).toBe(1);
   });
 
+  it("单条标记最多处理 50 个 id", async () => {
+    await enable();
+    const { ids } = await seedManyArticles(60);
+    await feverPost({ api_key: API_KEY, mark: "item", as: "read", id: ids.join(",") });
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM article_states WHERE is_read = 1").first<{ n: number }>();
+    expect(count?.n).toBe(50);
+    expect((await stateOf(ids[49]!))?.is_read).toBe(1);
+    expect(await stateOf(ids[50]!)).toBeNull();
+  });
+
   it("非法 as / mark 不落库", async () => {
     await enable();
     const feedId = await insertFeed("https://noop.example.com/rss", "无操作源");
@@ -567,6 +610,47 @@ describe("mark feed / group", () => {
     expect((await stateOf(ids.a2))?.is_read).toBeUndefined();
     expect((await stateOf(ids.a3))?.is_read).toBeUndefined();
     expect((await stateOf(ids.b1))?.is_read).toBeUndefined();
+  });
+
+  it("批量置读不覆盖已读文章的时间与收藏/稍后状态", async () => {
+    await enable();
+    const { feedA, times, ids } = await seedBefore();
+    await env.DB.prepare(
+      `INSERT INTO article_states (article_id, is_read, read_at, is_starred, starred_at, is_later, later_at, updated_at)
+       VALUES (?, 1, ?, 1, ?, 1, ?, ?)`
+    )
+      .bind(
+        ids.a1,
+        "2020-01-01T00:00:00.000Z",
+        "2020-01-02T00:00:00.000Z",
+        "2020-01-03T00:00:00.000Z",
+        "2020-01-04T00:00:00.000Z"
+      )
+      .run();
+    await feverPost({
+      api_key: API_KEY,
+      mark: "feed",
+      as: "read",
+      id: String(feedA),
+      before: String(seconds(times[1]!)),
+    });
+    const state = await stateOf(ids.a1);
+    expect(state?.is_read).toBe(1);
+    expect(state?.read_at).toBe("2020-01-01T00:00:00.000Z");
+    expect(state?.is_starred).toBe(1);
+    expect(state?.starred_at).toBe("2020-01-02T00:00:00.000Z");
+    expect(state?.is_later).toBe(1);
+    expect(state?.later_at).toBe("2020-01-03T00:00:00.000Z");
+    expect(state?.updated_at).toBe("2020-01-04T00:00:00.000Z");
+  });
+
+  it("before 非数字时回退为当前时间", async () => {
+    await enable();
+    const { feedA, ids } = await seedBefore();
+    await feverPost({ api_key: API_KEY, mark: "feed", as: "read", id: String(feedA), before: "not-a-number" });
+    expect((await stateOf(ids.a1))?.is_read).toBe(1);
+    expect((await stateOf(ids.a2))?.is_read).toBe(1);
+    expect((await stateOf(ids.a3))?.is_read).toBe(1);
   });
 
   it("group 分类 / id=0 全部 / id=-1 无操作", async () => {

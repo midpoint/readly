@@ -385,9 +385,9 @@ async function handleFever(c: Ctx): Promise<Response> {
   const credentials = await loadFeverCredentials(c.env.DB);
   if (!credentials) return c.json({ api_version: API_VERSION, auth: 0 }, 200, NO_STORE);
 
-  const provided = params.get("api_key")?.toLowerCase();
+  const provided = params.get("api_key")?.trim().toLowerCase();
   const expected = md5Hex(`${credentials.username}:${credentials.password}`);
-  if (!provided || !timingSafeEqualStr(provided, expected)) {
+  if (!provided || !/^[0-9a-f]{32}$/.test(provided) || !timingSafeEqualStr(provided, expected)) {
     return c.json({ api_version: API_VERSION, auth: 0 }, 200, NO_STORE);
   }
 
