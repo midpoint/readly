@@ -180,6 +180,13 @@ export interface GReaderAuth {
 
 export const GREADER_USERNAME = "readly";
 
+export interface FeverAuth {
+  username: string;
+  password: string;
+}
+
+export const FEVER_USERNAME = "readly";
+
 export const SETTING_KEYS = {
   readerPrefs: "reader_prefs",
   aiProviders: "ai_providers",
@@ -190,4 +197,5 @@ export const SETTING_KEYS = {
   refreshInterval: "refresh_interval",
   retentionDays: "retention_days",
   greaderAuth: "greader_auth",
+  feverAuth: "fever_auth",
 } as const;
