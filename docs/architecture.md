@@ -10,6 +10,7 @@ Readly 是单用户、自托管的 RSS 阅读器。目标是用尽量少的运�
    │                    │  ├─ /api/*(Bearer AUTH_TOKEN) │
    │                    │  ├─ /accounts、/reader/*      │
    │                    │  │   (Google Reader API)      │
+   │                    │  ├─ /fever* (Fever API)       │
    │                    │  └─ /api/ai/chat(代理模式)    │──> AI 服务商
    │                    └──────────────────────────────┘
    └─ AI 直连(可选)────────────────────────────────────> AI 服务商
@@ -17,14 +18,15 @@ Readly 是单用户、自托管的 RSS 阅读器。目标是用尽量少的运�
 Worker cron(每分钟)──> 抓取到期订阅 ──> 解析/去重 ──> D1
 ```
 
-Worker 同时承担四类职责:
+Worker 同时承担五类职责:
 
 1. **静态资源**:`web/dist` 通过 Workers Assets 托管;非白名单路径回退到 `index.html`,由 Vue Router 接管。
 2. **REST API**:`/api/*`,由 `AUTH_TOKEN` 保护;覆盖订阅、文章、状态、设置、AI 代理等。
 3. **Google Reader API**:`/accounts`、`/reader/*`,使用设置页生成的独立凭据;详见 [Google Reader API 文档](google-reader-api.md)。
-4. **定时任务**:Cron Trigger 每分钟推进一批到期订阅的抓取。
+4. **Fever API**:`/fever`、`/fever/*`、`/fever.php`,使用另一组独立凭据;详见 [Fever API 文档](fever-api.md)。
+5. **定时任务**:Cron Trigger 每分钟推进一批到期订阅的抓取。
 
-`worker/wrangler.toml` 的 `run_worker_first` 将 `/api/*`、`/accounts`、`/accounts/*`、`/reader`、`/reader/*` 排除在 SPA 回退之外,保证 API 不会被静态资源吞掉。
+`worker/wrangler.toml` 的 `run_worker_first` 将 `/api/*`、`/accounts`、`/accounts/*`、`/reader`、`/reader/*`、`/fever`、`/fever/*`、`/fever.php` 排除在 SPA 回退之外,保证 API 不会被静态资源吞掉。
 
 ## 运行时组件
 
@@ -52,12 +54,13 @@ Worker 同时承担四类职责:
 - 安全:
   - `lib/ssrf.ts`:AI 代理只允许公网目标,拒绝重定向绕过;
   - `lib/greader.ts`:GReader 凭据派生与条目形状;
-  - `/reader/*` 响应带 `Cache-Control: no-store`。
+  - `lib/md5.ts`:Fever `api_key` 协议所需的 MD5(仅兼容用途);
+  - `/reader/*` 与 `/fever*` 响应带 `Cache-Control: no-store`。
 - 静态资源与 SPA 回退由 Workers Assets 处理;`/api` 的 404/错误返回 JSON。
 
 ### Shared(前后端共享)
 
-`shared/src/index.ts` 存放前后端共用的类型与常量,例如阅读偏好、AI 服务商、设置键、GReader 凭据形状。修改共享契约时必须同时检查 worker 与 web 两侧。
+`shared/src/index.ts` 存放前后端共用的类型与常量,例如阅读偏好、AI 服务商、设置键、GReader/Fever 凭据形状。修改共享契约时必须同时检查 worker 与 web 两侧。
 
 ### D1 数据模型
 
@@ -69,14 +72,14 @@ Worker 同时承担四类职责:
 | `feeds` | 订阅源(URL、标题、站点、分类、抓取状态、ETag/Last-Modified、错误信息) |
 | `articles` | 文章(标题、作者、发布时间、摘要、正文、全文、语言、AI 摘要等) |
 | `article_states` | 已读/收藏/稍后状态与对应时间戳 |
-| `settings` | 键值设置(阅读偏好、AI 服务商、GReader 凭据等,值为 JSON) |
+| `settings` | 键值设置(阅读偏好、AI 服务商、GReader/Fever 凭据等,值为 JSON) |
 
 关键约束:
 
 - `feeds.url` 唯一;`articles` 以 `(feed_id, guid)` 唯一,重复抓取不会重复入库。
 - `articles` 删除时级联删除 `article_states`;删除订阅源时级联删除文章。
 - `published_at` 使用 ISO 8601 字符串存储,分页与按时间过滤使用字典序比较。
-- 设置值在 `settings.value` 中存 JSON;GReader 密码与(开启云同步时的)AI 密钥也在此表中,备份时需按敏感数据处理。
+- 设置值在 `settings.value` 中存 JSON;GReader/Fever 密码与(开启云同步时的)AI 密钥也在此表中,备份时需按敏感数据处理。
 
 ## 数据流
 
@@ -102,7 +105,14 @@ Worker 同时承担四类职责:
 3. 订阅/标签/未读计数/文章流从 D1 查询;已读/收藏写操作更新 `article_states`。
 4. 范围限定为核心同步:客户端不能增删改订阅,也不能触发刷新。
 
-### 4. AI 摘要
+### 4. Fever 客户端同步
+
+1. 客户端把 `api_key = md5("readly:<Fever 密码>")` 放在 POST 表单或查询参数中。
+2. Worker 从 `settings.fever_auth` 读取凭据,计算并常量时间比较 MD5;失败仍返回 HTTP 200 `auth: 0`。
+3. 客户端按 `max_id` / `since_id` / `with_ids` 分页读取 groups、feeds 与 items;写操作更新 `article_states` 并返回未读/收藏 ID 列表。
+4. 范围同样限定为核心同步:不支持订阅管理、客户端触发刷新、favicon、Hot Links 与 XML。
+
+### 5. AI 摘要
 
 1. 浏览器从设置中读取当前服务商配置。
 2. 直连模式由浏览器请求服务商;代理模式请求 `/api/ai/chat`,Worker 校验目标地址后转发。
@@ -110,10 +120,10 @@ Worker 同时承担四类职责:
 
 ## 关键设计取舍
 
-- **单 Worker + D1**:减少部署与运维面;静态资源、API、GReader 同源,客户端只需一个域名。
+- **单 Worker + D1**:减少部署与运维面;静态资源、API、GReader、Fever 同源,客户端只需一个域名。
 - **重计算放客户端**:Workers 免费版单次 CPU 约 10ms,聚类、关键词、正文提取不适合放在服务端。
 - **单用户令牌**:`AUTH_TOKEN` 是一个共享访问令牌,不提供账户体系;定位是个人自托管。多用户需要多实例。
-- **GReader 独立凭据**:与 `AUTH_TOKEN` 分离,便于单独停用/轮换第三方客户端,不影响网页登录。
+- **第三方客户端独立凭据**:GReader 与 Fever 各有一组密码,与 `AUTH_TOKEN` 分离,便于单独停用/轮换而不影响网页登录。
 - **无 ORM**:D1 语句直接写在路由/库中,迁移用 SQL 文件,便于审计和适配 D1 限制(如批量绑定参数上限)。
 - **渐进式增强**:PWA 只缓存应用壳;文章数据经 API 获取,IndexedDB 镜像仅服务聚类/关键词等本地计算;写操作需要网络。
 
@@ -121,8 +131,8 @@ Worker 同时承担四类职责:
 
 ```text
 shared/src/          前后端共享类型、常量、设置键
-worker/src/routes/   REST/Google Reader 路由
-worker/src/lib/      抓取、解析、字符集、SSRF、GReader 纯函数等
+worker/src/routes/   REST、Google Reader、Fever 路由
+worker/src/lib/      抓取、解析、字符集、SSRF、GReader/Fever 纯函数等
 worker/migrations/   D1 迁移 SQL
 web/src/views/       页面级视图
 web/src/components/  UI 组件
@@ -140,4 +150,4 @@ docs/                使用、开发、部署与设计档案
 3. 在 `web/src/stores`/`views`/`components` 接入;涉及 HTML 渲染时继续走 DOMPurify。
 4. 补 worker 集成测试与 web 组件测试,执行 `pnpm build && pnpm -r test && pnpm -r typecheck`。
 
-Google Reader API 的契约以 [设计文档](superpowers/specs/2026-10-29-google-reader-api-design.md) 为准;修改端点行为前先更新该文档与对应测试。
+Google Reader API 的契约以 [设计文档](superpowers/specs/2026-10-29-google-reader-api-design.md) 为准;Fever API 的契约以 [设计文档](superpowers/specs/2026-10-30-fever-api-design.md) 为准。修改端点行为前先更新对应文档与测试。

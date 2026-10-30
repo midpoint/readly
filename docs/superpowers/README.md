@@ -26,9 +26,10 @@
 | 正文默认排版升级(中文书籍派) | [2026-10-16 设计](specs/2026-10-16-reader-typography-design.md) | [计划](plans/2026-10-16-readly-reader-typography.md) |
 | 侧栏精简 + 功能入设置 | [2026-10-16 设计](specs/2026-10-16-sidebar-slim-settings-design.md) | [计划](plans/2026-10-16-readly-sidebar-slim-settings.md) |
 | Google Reader API 核心同步 | [2026-10-29 设计](specs/2026-10-29-google-reader-api-design.md) | [计划](plans/2026-10-29-readly-google-reader-api.md) |
+| Fever API 同步 | [2026-10-30 设计](specs/2026-10-30-fever-api-design.md) | [计划](plans/2026-10-30-readly-fever-api.md) |
 
 ## 阅读顺序建议
 
 1. 先读[总体设计](specs/2026-10-13-readly-design.md),了解产品目标、范围与已取消的功能。
 2. 按功能查阅对应的 spec,再看 plan 了解任务拆分、测试与验收方式。
-3. 涉及 Google Reader API 的改动,以[GReader 设计](specs/2026-10-29-google-reader-api-design.md)为契约基准,并同步更新[使用文档](../google-reader-api.md)。
+3. 涉及 Google Reader API 的改动,以[GReader 设计](specs/2026-10-29-google-reader-api-design.md)为契约基准,并同步更新[使用文档](../google-reader-api.md);Fever API 同理,见 [Fever 设计](specs/2026-10-30-fever-api-design.md)与[使用文档](../fever-api.md)。

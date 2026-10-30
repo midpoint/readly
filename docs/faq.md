@@ -8,7 +8,7 @@
 pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
 ```
 
-设置新值后,已在网页登录的设备需要重新输入。GReader 客户端使用独立密码,不受 `AUTH_TOKEN` 影响。
+设置新值后,已在网页登录的设备需要重新输入。GReader / Fever 客户端使用各自的独立密码,不受 `AUTH_TOKEN` 影响。
 
 **不要不设置 `AUTH_TOKEN` 就暴露到公网**:未设置时 Worker 不校验任何请求。
 
@@ -25,12 +25,16 @@ pnpm --filter @readly/worker exec wrangler secret put AUTH_TOKEN
   pnpm --filter @readly/worker exec wrangler d1 export readly --remote --output ../readly-backup.sql
   ```
 
-  备份包含文章、阅读状态、设置、GReader 密码,以及开启云同步时的 AI 密钥,应按敏感文件保管。
+  备份包含文章、阅读状态、设置、GReader / Fever 密码,以及开启云同步时的 AI 密钥,应按敏感文件保管。
 - **恢复**:见[部署指南的备份与恢复](deployment.md#备份与恢复);恢复前务必再备份当前库。
 
-## 为什么 Google Reader 客户端不能添加订阅或刷新?
+## 为什么第三方客户端不能添加订阅或刷新?
 
-Readly 的 GReader 实现范围是**核心同步**,用于在客户端阅读已有文章和同步已读/收藏状态。订阅管理(加源、删源、改名、移动分类)请在网页端完成;刷新由服务端 cron 自动进行,客户端刷新只会重新拉取已有文章。
+Readly 的 GReader 与 Fever 实现范围都是**核心同步**,用于在客户端阅读已有文章和同步已读/收藏状态。订阅管理(加源、删源、改名、移动分类)请在网页端完成;刷新由服务端 cron 自动进行,客户端刷新只会重新拉取已有文章。
+
+## 该选 Google Reader 还是 Fever?
+
+客户端支持哪个就用哪个。两者都支持时优先 Google Reader:生态更活跃,支持更多同步能力;Fever 适合只提供 Fever 账户类型的客户端,例如 Reeder Classic、Unread、FeedMe、Fiery Feeds、ReadKit。
 
 ## AI 密钥存在哪里?直连和代理怎么选?
 
@@ -48,7 +52,7 @@ PWA 会缓存应用壳,离线时可以打开应用界面;但文章列表与正�
 
 ## 数据都存放在哪里?
 
-- **D1**:订阅、文章、阅读状态、设置、GReader 凭据;开启云同步时的 AI 配置。
+- **D1**:订阅、文章、阅读状态、设置、GReader / Fever 凭据;开启云同步时的 AI 配置。
 - **浏览器 localStorage**:阅读偏好、AI 密钥(默认)、网页访问令牌。
 - **IndexedDB**:用于事件聚类/关键词匹配的最近 1000 篇文章镜像。
 

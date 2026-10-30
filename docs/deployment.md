@@ -109,7 +109,7 @@ pnpm --filter @readly/worker run deploy
 
 ## 备份与恢复
 
-订阅可以随时在网页端导出 OPML。完整数据(文章、阅读状态、设置、GReader 凭据、可选同步的 AI 密钥)需要备份 D1:
+订阅可以随时在网页端导出 OPML。完整数据(文章、阅读状态、设置、GReader / Fever 凭据、可选同步的 AI 密钥)需要备份 D1:
 
 ```bash
 pnpm --filter @readly/worker exec wrangler d1 export readly --remote --output ../readly-backup.sql
@@ -121,13 +121,14 @@ pnpm --filter @readly/worker exec wrangler d1 export readly --remote --output ..
 pnpm --filter @readly/worker exec wrangler d1 execute readly --remote --file ../readly-backup.sql
 ```
 
-备份文件包含明文 GReader 密码;若开启了 AI 密钥云同步,也包含 AI 密钥。请按敏感文件保管,不要提交到仓库或公开分享。
+备份文件包含明文 GReader / Fever 密码;若开启了 AI 密钥云同步,也包含 AI 密钥。请按敏感文件保管,不要提交到仓库或公开分享。
 
 ## 安全检查清单
 
 - [ ] `AUTH_TOKEN` 已设置且足够长;确认未设置时 Workers 不鉴权
 - [ ] `worker/wrangler.toml` 使用自己的 `database_id`
 - [ ] GReader 密码仅分享给可信客户端;泄露时在设置页重置
+- [ ] Fever 密码仅分享给可信客户端;泄露时在设置页重置
 - [ ] 若开启 AI 密钥云同步,确认 D1 访问权限与备份文件的保管
 - [ ] 定期备份 D1,并妥善保管备份文件
 - [ ] 不要把 `worker/.dev.vars`、API Token、备份 SQL 提交到仓库
@@ -144,3 +145,4 @@ pnpm --filter @readly/worker exec wrangler d1 execute readly --remote --file ../
 | 新文章不更新 | 检查 Cron Trigger 是否存在;免费版每批处理数量有限,源多时需要多轮;也可在网页端点「刷新全部」 |
 | 免费版出现 CPU 超限 | 降低 `refresh_batch_size`,或升级 Workers Paid |
 | 自定义域名下 GReader 连不上 | 客户端服务器地址填自定义域名根地址,并确认已为该域名配置 Worker 路由 |
+| 自定义域名下 Fever 连不上 | 客户端 Fever 地址填 `https://自定义域名/fever/`(完整路径),并确认已为该域名配置 Worker 路由 |

@@ -2,6 +2,7 @@
 
 - 日期:2026-10-29
 - 状态:已评审通过(用户确认:替换 Fever 方案;认证沿用设置页独立密码;范围为核心同步,不含客户端订阅管理)
+- 后续:2026-10-30 按原评审结论恢复并实现 Fever API(见 `2026-10-30-fever-api-design.md`),与 GReader 并存。
 - 背景:让 Reeder Classic、FeedMe、NewsFlash、Read You 等支持 Google Reader API 的客户端接入 Readly。该 API 无官方文档,契约以 FreshRSS 实现、Miniflux 实现及 2025 年 Reeder/NewsFlash 实测记录(davd.io)为准。
 
 ## 1. 目标与范围

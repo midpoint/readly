@@ -8,6 +8,7 @@
 |---|---|
 | [部署指南](deployment.md) | 手动部署、Cloudflare Workers Builds 自动部署、GitHub Actions 备用通道、备份与恢复、免费额度与排错 |
 | [Google Reader API](google-reader-api.md) | 第三方客户端配置、支持的端点与流、同步范围、限制、安全说明与排错 |
+| [Fever API](fever-api.md) | Fever 客户端配置、认证、读取/写入端点、分页、限制与排错 |
 | [常见问题](faq.md) | 访问令牌、多用户、数据备份、AI 密钥、客户端兼容性等 |
 
 ## 开发与架构

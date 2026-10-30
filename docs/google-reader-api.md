@@ -2,6 +2,8 @@
 
 Readly 实现了 Google Reader API 的**核心同步**子集,供 Reeder、FeedMe、NewsFlash 等客户端接入。完整契约以[设计文档](superpowers/specs/2026-10-29-google-reader-api-design.md)为准;本文面向配置与使用。
 
+Readly 也提供独立的 [Fever API](fever-api.md);客户端只支持 Fever 时可使用后者。
+
 ## 启用
 
 1. 打开 Readly 的 **设置 → 第三方客户端(Google Reader API)**。
