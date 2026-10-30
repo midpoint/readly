@@ -6,7 +6,7 @@ compatibility_date = "2025-09-01"
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/accounts", "/accounts/*", "/reader", "/reader/*"]
+run_worker_first = ["/api/*", "/accounts", "/accounts/*", "/reader", "/reader/*", "/fever", "/fever/*", "/fever.php"]
 
 [triggers]
 crons = ["* * * * *"]
