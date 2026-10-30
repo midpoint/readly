@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { AiProvider } from "@readly/shared";
+import FeverSettings from "@/components/FeverSettings.vue";
 import GoogleReaderSettings from "@/components/GoogleReaderSettings.vue";
 import ProviderEditor from "@/components/ProviderEditor.vue";
 import ShortcutHelp from "@/components/ShortcutHelp.vue";
@@ -200,6 +201,8 @@ function doExport(): void {
     </section>
 
     <GoogleReaderSettings />
+
+    <FeverSettings />
 
     <section class="mt-8">
       <h2 class="text-base font-semibold">帮助</h2>
